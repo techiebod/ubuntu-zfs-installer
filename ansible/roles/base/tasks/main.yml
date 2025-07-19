@@ -1,0 +1,21 @@
+- name: Set hostname
+  copy:
+    src: etc-hostname
+    dest: /etc/hostname
+
+- name: Copy hosts file
+  copy:
+    src: etc-hosts
+    dest: /etc/hosts
+
+- name: Set journald config
+  template:
+    src: journald.conf.j2
+    dest: /etc/systemd/journald.conf
+  notify: Restart journald
+
+- name: Set timezone
+  command: timedatectl set-timezone {{ lookup('env', 'TIMEZONE') }}
+
+- name: Generate locale
+  command: locale-gen {{ lookup('env', 'LOCALE') }}

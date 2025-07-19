@@ -1,0 +1,4 @@
+*.retry
+*.sops.yaml.agekey
+__pycache__/
+*.log
