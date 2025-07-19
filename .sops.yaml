@@ -1,0 +1,6 @@
+# .sops.yaml — auto-generated
+creation_rules:
+  - path_regex: config/secrets.sops.yaml
+    encrypted_regex: '^(users|secrets)$'
+    age:
+      - age1qu3t4l5nyfqe6mfzp82jxql9tmefa35zv2yypm320qdadprve4aswx9m9n
