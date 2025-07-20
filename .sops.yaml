@@ -1,6 +1,7 @@
-# .sops.yaml — auto-generated
+---
+# Note: When decrypting a file, SOPS will look for ~/.ssh/id_ed25519 and falls back to ~/.ssh/id_rsa
+# So I needed to 'export SOPS_AGE_SSH_PRIVATE_KEY_FILE=~/.ssh/id_techiebod'
 creation_rules:
-  - path_regex: config/secrets.sops.yaml
+  - path_regex: ^config/secrets\.sops\.yaml$
     encrypted_regex: '^(users|secrets)$'
-    age:
-      - age1qu3t4l5nyfqe6mfzp82jxql9tmefa35zv2yypm320qdadprve4aswx9m9n
+    age: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGGl7Dr6eZTG7KA21Dm293hW0Mh8hsr5PawiQKMOzy7s'
