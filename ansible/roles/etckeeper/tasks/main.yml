@@ -11,4 +11,4 @@
 - name: Auto-commit etc changes
   copy:
     dest: /etc/apt/apt.conf.d/99etckeeper
-    content: 'DPkg::Post-Invoke {"etckeeper commit "installed " || true";};'
+    content: 'DPkg::Post-Invoke {"etckeeper commit installed || true";};'

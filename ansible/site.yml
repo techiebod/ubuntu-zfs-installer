@@ -27,9 +27,9 @@
     - role: network
       tags: ['network']
     
-    - role: docker
+    - role: geerlingguy.docker
       tags: ['docker', 'containers']
-      when: install_docker | default(true)
+      when: docker_users is defined and docker_users | length > 0
     
     - role: samba
       tags: ['samba', 'fileserver']

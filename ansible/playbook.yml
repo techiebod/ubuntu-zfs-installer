@@ -6,5 +6,5 @@
     - base
     - etckeeper
     - network
-    - docker
+    - geerlingguy.docker
     - samba

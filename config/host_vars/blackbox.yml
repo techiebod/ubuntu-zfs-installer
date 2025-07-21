@@ -27,10 +27,22 @@ network_config:
       mtu: 9000
       addresses: [10.0.0.1/24]
 
-# Docker configuration
-install_docker: true
+# Docker configuration (geerlingguy.docker role)
+docker_install_compose: true
 docker_users:
   - henry
+
+# Docker daemon configuration
+docker_daemon_options:
+  metrics-addr: "0.0.0.0:9323"
+  experimental: true
+  dns:
+    - "8.8.8.8"
+    - "8.8.4.4"
+  log-driver: "journald"
+  log-opts:
+    tag: "Container: {{ '{{' }}.Name{{ '}}' }}"
+  data-root: "/var/tmp/docker"
 
 # Additional packages for this server (if any)
 extra_packages:

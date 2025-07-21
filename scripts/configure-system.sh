@@ -226,6 +226,8 @@ NSPAWN_CMD+="echo 'deb http://archive.ubuntu.com/ubuntu plucky-updates main rest
 NSPAWN_CMD+="echo 'deb http://security.ubuntu.com/ubuntu plucky-security main restricted universe multiverse' >> /etc/apt/sources.list && "
 NSPAWN_CMD+="apt-get update && apt-get install -y ansible python3-apt; "
 NSPAWN_CMD+="fi && "
+NSPAWN_CMD+="echo 'Installing Ansible role dependencies...' && "
+NSPAWN_CMD+="ansible-galaxy install -r requirements.yml && "
 NSPAWN_CMD+="$ANSIBLE_CMD"
 NSPAWN_CMD+="\""
 
