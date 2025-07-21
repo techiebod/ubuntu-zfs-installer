@@ -3,7 +3,7 @@
 # Script to create Ubuntu base image using mmdebstrap via Docker
 # Usage: ./create_ubuntu_base.sh [OPTIONS] TARGET_DIR
 # 
-# This script uses the get-latest-ubuntu.sh script to get the current Ubuntu version
+# This script uses the get-ubuntu-version.sh script to get Ubuntu version information
 # and creates a minimal ZFS-ready base image using mmdebstrap running in a Docker container.
 # The base image is designed to be configured with Ansible for machine-specific settings.
 
@@ -31,7 +31,7 @@ Designed for use with ZFSBootMenu (GRUB is excluded and held to prevent installa
 
 OPTIONS:
     -v, --version VERSION    Ubuntu version (e.g., 25.04, 24.04)
-                           If not specified, uses latest from get-latest-ubuntu.sh
+                           If not specified, uses latest from get-ubuntu-version.sh
     -a, --arch ARCH         Target architecture (default: amd64)
     -m, --mirror URL        Ubuntu mirror URL (default: archive.ubuntu.com)
     --variant VARIANT       Debootstrap variant (default: minbase)
@@ -78,7 +78,8 @@ POST-INSTALL CONFIGURATION:
 
 REQUIREMENTS:
     - Docker must be installed and running
-    - get-latest-ubuntu.sh script must be in the same directory or in PATH
+    - get-ubuntu-version.sh script must be in the same directory or in PATH
+    - jq (for Ubuntu version/codename lookup) - install with: apt install jq
 EOF
 }
 
@@ -121,32 +122,37 @@ get_ubuntu_info() {
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     
-    # Look for get-latest-ubuntu.sh script
-    if [[ -f "$script_dir/get-latest-ubuntu.sh" ]]; then
-        ubuntu_script="$script_dir/get-latest-ubuntu.sh"
-    elif [[ -f "./get-latest-ubuntu.sh" ]]; then
-        ubuntu_script="./get-latest-ubuntu.sh"
-    elif command -v get-latest-ubuntu.sh >/dev/null 2>&1; then
-        ubuntu_script="get-latest-ubuntu.sh"
+    # Look for get-ubuntu-version.sh script
+    if [[ -f "$script_dir/get-ubuntu-version.sh" ]]; then
+        ubuntu_script="$script_dir/get-ubuntu-version.sh"
+    elif [[ -f "./get-ubuntu-version.sh" ]]; then
+        ubuntu_script="./get-ubuntu-version.sh"
+    elif command -v get-ubuntu-version.sh >/dev/null 2>&1; then
+        ubuntu_script="get-ubuntu-version.sh"
     else
-        log "ERROR: get-latest-ubuntu.sh script not found"
-        log "Please ensure get-latest-ubuntu.sh is in the same directory as this script or in PATH"
+        log "ERROR: get-ubuntu-version.sh script not found"
+        log "Please ensure get-ubuntu-version.sh is in the same directory as this script or in PATH"
         exit 1
     fi
     
     # Get version and codename
     if [[ -z "$UBUNTU_VERSION" ]]; then
+        # Get latest version
         UBUNTU_VERSION=$($ubuntu_script)
         if [[ $? -ne 0 ]] || [[ -z "$UBUNTU_VERSION" ]]; then
             log "ERROR: Failed to get Ubuntu version from $ubuntu_script"
             exit 1
         fi
-    fi
-    
-    UBUNTU_CODENAME=$($ubuntu_script --codename 2>/dev/null || echo "")
-    if [[ -z "$UBUNTU_CODENAME" ]]; then
-        log "WARNING: Could not get codename for Ubuntu $UBUNTU_VERSION"
-        UBUNTU_CODENAME="unknown"
+        # Get codename for the latest version
+        UBUNTU_CODENAME=$($ubuntu_script --codename)
+    else
+        # Version was specified, get the codename for this specific version
+        UBUNTU_CODENAME=$($ubuntu_script --codename "$UBUNTU_VERSION")
+        if [[ $? -ne 0 ]] || [[ -z "$UBUNTU_CODENAME" ]]; then
+            log "ERROR: Could not get codename for Ubuntu $UBUNTU_VERSION"
+            log "Please verify this is a valid Ubuntu version"
+            exit 1
+        fi
     fi
     
     # Warn if using a very new release that might not have stable keys
