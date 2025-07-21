@@ -23,7 +23,7 @@ base_hostname: "{{ inventory_hostname }}"
 base_update_cache: true
 base_upgrade_packages: true
 
-# Essential packages to install
+# Essential packages to install (core system requirements)
 base_packages:
   - curl
   - wget
@@ -31,14 +31,24 @@ base_packages:
   - htop
   - tree
   - unzip
-  - apt-transport-https
   - ca-certificates
   - gnupg
-  - software-properties-common
   - locales
+  - locales-all        # Additional locale data
   - tzdata
-  - util-linux-extra
+  - util-linux-extra  # Required for hwclock/timezone
   - git  # For etckeeper
+  - openssh-server     # Remote access
+  - rsync              # File transfers, ZFS sends
+  - smartmontools      # Disk monitoring
+  - sanoid             # ZFS snapshot management
+  - mbuffer            # For faster ZFS sends
+  - nvme-cli           # NVMe tools
+  - hdparm             # Disk utilities
+  - tmux               # Terminal multiplexer
+
+# Additional packages that can be defined per host
+extra_packages: []
 
 # SSH configuration
 base_ssh_permit_root_login: "no"
@@ -48,3 +58,10 @@ base_ssh_pubkey_authentication: "yes"
 # System settings
 base_swappiness: 10
 base_max_open_files: 65536
+
+# ZFS-optimized sysctl settings
+zfs_sysctl_settings:
+  - name: vm.dirty_ratio
+    value: "5"
+  - name: vm.dirty_background_ratio
+    value: "2"

@@ -3,18 +3,26 @@
   service:
     name: systemd-journald
     state: restarted
+  failed_when: false  # Don't fail in container environments
+  when: ansible_service_mgr == "systemd"
 
 - name: Restart systemd-hostnamed
   service:
     name: systemd-hostnamed
     state: restarted
+  failed_when: false  # Don't fail in container environments
+  when: ansible_service_mgr == "systemd"
 
 - name: Restart systemd-timesyncd
   service:
     name: systemd-timesyncd
     state: restarted
+  failed_when: false  # Don't fail in container environments
+  when: ansible_service_mgr == "systemd"
 
 - name: Restart systemd-localed
   service:
     name: systemd-localed
     state: restarted
+  failed_when: false  # Don't fail in container environments
+  when: ansible_service_mgr == "systemd"

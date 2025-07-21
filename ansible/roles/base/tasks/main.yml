@@ -15,11 +15,11 @@
     name: "{{ base_packages }}"
     state: present
 
-- name: Install ZFS-specific packages
+- name: Install additional packages
   apt:
-    name: "{{ zfs_packages }}"
+    name: "{{ extra_packages }}"
     state: present
-  when: install_zfs_tools | default(false)
+  when: extra_packages | length > 0
 
 - name: Set hostname
   copy:

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to configure Ubuntu ZFS base image with Ansible
+# Script to configure Ubuntu ZFS base image with Ansible using systemd-nspawn
 # Usage: ./configure-system.sh [OPTIONS] BASE_IMAGE_PATH
 
 set -euo pipefail
@@ -19,7 +19,7 @@ show_usage() {
     cat << EOF
 Usage: $0 [OPTIONS] BASE_IMAGE_PATH
 
-Configure Ubuntu ZFS base image using Ansible in chroot context.
+Configure Ubuntu ZFS base image using Ansible in systemd-nspawn container.
 
 ARGUMENTS:
     BASE_IMAGE_PATH         Path to the base image directory (e.g., /mnt/ubuntu-base)
@@ -54,8 +54,9 @@ EXAMPLES:
     $0 --verbose --tags base /mnt/ubuntu-base
 
 REQUIREMENTS:
-    - Must be run from the ansible/ directory
+    - Must be run from the ansible/ directory or project root
     - Base image must be a valid Ubuntu filesystem
+    - systemd-nspawn must be available on the host system
     - Will install Ansible inside the base image if needed
 EOF
 }
@@ -156,31 +157,16 @@ else
     log "WARNING: $USER_ENV not found, using defaults"
 fi
 
-# Mount necessary filesystems for chroot
-log "Preparing chroot environment..."
-mount -o bind /proc "$BASE_IMAGE_PATH/proc" || true
-mount -o bind /sys "$BASE_IMAGE_PATH/sys" || true  
-mount -o bind /dev "$BASE_IMAGE_PATH/dev" || true
-mount -o bind /dev/pts "$BASE_IMAGE_PATH/dev/pts" || true
+# Prepare configuration for container
+log "Preparing configuration for systemd-nspawn container..."
+# Remove any existing configuration to ensure fresh copy
+rm -rf "$BASE_IMAGE_PATH/opt/ansible-config"
+mkdir -p "$BASE_IMAGE_PATH/opt/ansible-config"
+cp -r "$ansible_dir"/* "$BASE_IMAGE_PATH/opt/ansible-config/"
+cp -r "$script_dir/../config" "$BASE_IMAGE_PATH/opt/ansible-config/"
 
-# Function to cleanup on exit
-cleanup() {
-    log "Cleaning up chroot environment..."
-    umount -l "$BASE_IMAGE_PATH/proc" 2>/dev/null || true
-    umount -l "$BASE_IMAGE_PATH/sys" 2>/dev/null || true
-    umount -l "$BASE_IMAGE_PATH/dev/pts" 2>/dev/null || true
-    umount -l "$BASE_IMAGE_PATH/dev" 2>/dev/null || true
-}
-trap cleanup EXIT
-
-# Copy user configuration to the base image
-log "Copying configuration to base image..."
-mkdir -p "$BASE_IMAGE_PATH/tmp/ansible-config"
-cp -r "$ansible_dir"/* "$BASE_IMAGE_PATH/tmp/ansible-config/"
-cp -r "$script_dir/../config" "$BASE_IMAGE_PATH/tmp/ansible-config/"
-
-# Fix symlinks to point to correct relative paths in chroot
-cd "$BASE_IMAGE_PATH/tmp/ansible-config"
+# Fix symlinks to point to correct relative paths in container
+cd "$BASE_IMAGE_PATH/opt/ansible-config"
 if [[ -L "host_vars" ]]; then
     rm host_vars
     ln -s ./config/host_vars host_vars
@@ -191,51 +177,8 @@ if [[ -L "group_vars" ]]; then
 fi
 
 if [[ -f "$USER_ENV" ]]; then
-    cp "$USER_ENV" "$BASE_IMAGE_PATH/tmp/ansible-config/"
+    cp "$USER_ENV" "$BASE_IMAGE_PATH/opt/ansible-config/"
 fi
-
-# Install Ansible in the base image if not present
-log "Ensuring Ansible is available in base image..."
-chroot "$BASE_IMAGE_PATH" /bin/bash -c "
-    export DEBIAN_FRONTEND=noninteractive
-    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-    
-    if ! command -v ansible-playbook >/dev/null 2>&1; then
-        if command -v apt-get >/dev/null 2>&1; then
-            # Ensure we have the full repository set
-            echo 'deb http://archive.ubuntu.com/ubuntu plucky main restricted universe multiverse' > /etc/apt/sources.list
-            echo 'deb http://archive.ubuntu.com/ubuntu plucky-updates main restricted universe multiverse' >> /etc/apt/sources.list
-            echo 'deb http://security.ubuntu.com/ubuntu plucky-security main restricted universe multiverse' >> /etc/apt/sources.list
-            
-            apt-get update
-            apt-get install -y ansible
-        else
-            echo 'ERROR: apt-get not available in base image'
-            echo 'Please recreate base image with apt package included'
-            exit 1
-        fi
-    fi
-"
-
-# Build ansible-playbook command for chroot execution
-CHROOT_CMD="chroot $BASE_IMAGE_PATH /bin/bash -c \"
-cd /tmp/ansible-config
-
-# Set locale environment for Ansible
-export LC_ALL=C.UTF-8
-export LANG=C.UTF-8
-export LANGUAGE=C.UTF-8
-
-"
-
-# Load user.env in chroot if it exists
-CHROOT_CMD+="if [[ -f user.env ]]; then
-    set -a
-    source user.env
-    set +a
-fi
-
-"
 
 # Build the ansible-playbook command
 ANSIBLE_CMD="ansible-playbook"
@@ -259,13 +202,34 @@ if [[ "$VERBOSE" == true ]]; then
     ANSIBLE_CMD+=" -vv"
 fi
 
-CHROOT_CMD+="$ANSIBLE_CMD"
-CHROOT_CMD+="\""
+log "Using systemd-nspawn container for Ansible execution"
 
-# Show what we're about to run
-log "Running: $CHROOT_CMD"
+# Build systemd-nspawn command with inline script execution
+NSPAWN_CMD="systemd-nspawn"
+NSPAWN_CMD+=" --directory=$BASE_IMAGE_PATH"
+NSPAWN_CMD+=" --console=pipe"
+NSPAWN_CMD+=" --machine=ubuntu-config-$$"
+NSPAWN_CMD+=" --quiet"
+NSPAWN_CMD+=" /bin/bash -c \""
+NSPAWN_CMD+="set -euo pipefail && "
+NSPAWN_CMD+="export DEBIAN_FRONTEND=noninteractive && "
+NSPAWN_CMD+="export LC_ALL=C.UTF-8 && "
+NSPAWN_CMD+="export LANG=C.UTF-8 && "
+NSPAWN_CMD+="export LANGUAGE=C.UTF-8 && "
+NSPAWN_CMD+="export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && "
+NSPAWN_CMD+="cd /opt/ansible-config && "
+NSPAWN_CMD+="if [[ -f user.env ]]; then set -a; source user.env; set +a; fi && "
+NSPAWN_CMD+="if ! command -v ansible-playbook >/dev/null 2>&1; then "
+NSPAWN_CMD+="echo 'Installing Ansible...' && "
+NSPAWN_CMD+="echo 'deb http://archive.ubuntu.com/ubuntu plucky main restricted universe multiverse' > /etc/apt/sources.list && "
+NSPAWN_CMD+="echo 'deb http://archive.ubuntu.com/ubuntu plucky-updates main restricted universe multiverse' >> /etc/apt/sources.list && "
+NSPAWN_CMD+="echo 'deb http://security.ubuntu.com/ubuntu plucky-security main restricted universe multiverse' >> /etc/apt/sources.list && "
+NSPAWN_CMD+="apt-get update && apt-get install -y ansible python3-apt; "
+NSPAWN_CMD+="fi && "
+NSPAWN_CMD+="$ANSIBLE_CMD"
+NSPAWN_CMD+="\""
 
-# Execute the playbook in chroot
-eval "$CHROOT_CMD"
+log "Running: $NSPAWN_CMD"
+eval "$NSPAWN_CMD"
 
 log "Configuration completed successfully"

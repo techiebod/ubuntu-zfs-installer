@@ -27,27 +27,11 @@ network_config:
       mtu: 9000
       addresses: [10.0.0.1/24]
 
-# Packages for main server with full ZFS toolset
-install_zfs_tools: true
-zfs_packages:
-  - curl
-  - wget
-  - vim
-  - htop
-  - tree
-  - unzip
-  - apt-transport-https
-  - ca-certificates
-  - gnupg
-  - software-properties-common
-  - locales
-  - tzdata
-  - git
-  - zfs-auto-snapshot
-  - smartmontools
-  - nvme-cli
-  - hdparm
-  - sanoid  # ZFS snapshot management
-  - mbuffer  # For faster ZFS sends
-  - tmux     # Terminal multiplexer
-  - ncdu     # Disk usage analyzer
+# Docker configuration
+install_docker: true
+docker_users:
+  - henry
+
+# Additional packages for this server (if any)
+extra_packages:
+  - ncdu  # Disk usage analyzer

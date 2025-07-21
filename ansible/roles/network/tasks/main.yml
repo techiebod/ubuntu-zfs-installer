@@ -12,7 +12,9 @@
 
     - name: Configure netplan with host-specific settings
       copy:
-        content: "{{ network_config | to_nice_yaml }}"
+        content: |
+          network:
+          {{ network_config | to_nice_yaml | indent(2, true) }}
         dest: /etc/netplan/01-netcfg.yaml
         mode: '0600'
         backup: true
