@@ -1,89 +1,158 @@
 # Ubuntu ZFS Installer
 
-This repo provides a modular system to install and maintain an Ubuntu system on ZFS root, designed to work with ZFSBootMenu and use Ansible to maintain the OS and packages config.  The stages are:
-
-- Create ZFS filesystems (/ and /var/log for the chosen OS)
-- Unpack a base image and copy in key config items e.g. hostid
-- Create a chroot/container to work with pre-first-boot
-- Configure the base OS
-- Install packages and configure them
-
-Reboot into this at your lesuire and thanks to ZFSBootMenu make this a safe process!
-
-Maintain the config through a realign script and then repeat as each OS is desired.
+This repo provides a simplified system to configure Ubuntu systems on ZFS using Ansible built initially in systemd-nspawn containers. The system creates a ZFS-optimized Ubuntu base image and configures it with a clean, maintainable Ansible setup.
 
 ## 🧱 Project Structure
 
-- `install.sh` — Bootstrap script for first-time ZFS + debootstrap install
-- `realign.sh` — Manually reapply Ansible config to current system
-- `config/` — Secrets and user/env configuration (secure via sops)
-- `ansible/` — System configuration split into roles (base, docker, samba, etc.)
-- `scripts/` — Utility scripts (e.g. dataset creation, sops setup)
+- `scripts/create-ubuntu-base.sh` — Create ZFS-optimized Ubuntu base images
+- `scripts/configure-system.sh` — Main script to configure systems using systemd-nspawn + Ansible
+- `config/host_vars/` — Per-machine configuration (hostname, network, packages, etc.)
+- `config/user.env` — User settings (username, timezone, locale)
+- `config/secrets.sops.yaml` — Encrypted secrets (passwords, SSH keys)
+- `ansible/` — System configuration using roles and maintained community roles
+- `scripts/realign.sh` — Apply Ansible config to running system
 
-## 🔒 Security
+## � Quick Start
 
-Secrets are stored in `config/secrets.sops.yaml` and encrypted using Mozilla [sops](https://github.com/mozilla/sops) and [age](https://github.com/FiloSottile/age).
+1. **Configure your machine**: Copy and edit a host configuration
+
+   ```bash
+   cp config/host_vars/blackbox.yml config/host_vars/yourmachine.yml
+   # Edit the file with your settings
+   ```
+
+2. **Set user preferences**:
+
+   ```bash
+   cp config/user.env.example config/user.env
+   # Edit with your username, timezone, locale
+   ```
+
+3. **Configure a base image**:
+
+   ```bash
+   sudo ./scripts/configure-system.sh yourmachine /path/to/base/image
+   ```
 
 ## ⚙️ Configuration
 
-### User Configuration
+### Host Configuration
 
-1. **Copy the example config**: `cp config/user.env.example config/user.env`
-2. **Edit your settings**:
+Each machine gets its own configuration file in `config/host_vars/machinename.yml`:
 
-   ```bash
-   USERNAME=yourusername
-   TIMEZONE=Europe/London  # Find yours: timedatectl list-timezones
-   LOCALE=en_GB.UTF-8      # Find yours: locale -a
-   ```
+```yaml
+---
+# Basic system settings
+base_hostname: yourmachine
+base_timezone: "Europe/London"
+base_locale: "en_GB.UTF-8"
 
-### Secrets Configuration
+# Network configuration (optional)
+network_config:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: true
 
-1. **Install sops and age**: `apt install age sops`
-2. **Generate age key**: `age-keygen -o ~/.config/sops/age/keys.txt`
-3. **Setup sops config**: `./scripts/create-sops-config.sh`
+# Docker configuration (optional)
+docker_install_compose: true
+docker_users:
+  - yourusername
+docker_daemon_options:
+  log-driver: "journald"
+  data-root: "/var/lib/docker"
+
+# Additional packages
+extra_packages:
+  - htop
+  - vim
+```
+
+### System Roles
+
+The system uses a mix of custom and community-maintained Ansible roles:
+
+- **base**: System basics (timezone, locale, hostname, packages, ZFS optimization)
+- **etckeeper**: Git-based /etc tracking  
+- **network**: Network configuration via netplan
+- **geerlingguy.docker**: Docker installation (community-maintained)
+- **samba**: File server setup
+
+## 🔒 Security
+
+Secrets are encrypted using Mozilla [sops](https://github.com/mozilla/sops):
+
+1. **Install tools**: `apt install age sops`
+2. **Generate key**: `age-keygen -o ~/.config/sops/age/keys.txt`
+3. **Setup sops**: `./scripts/create-sops-config.sh`
 4. **Edit secrets**: `sops config/secrets.sops.yaml`
 
-The secrets file contains:
+## � Advanced Usage
 
-- User password hashes
-- SSH authorized keys
-- Any other sensitive configuration
+### Configuration Tags
 
-### System Configuration
+Run only specific configuration tasks:
 
-The system uses Ansible roles that are completely generic and reusable:
+```bash
+# Only configure Docker
+sudo ./scripts/configure-system.sh --tags docker yourmachine /path/to/base/image
 
-- **base**: Timezone, locale, hostname, essential packages
-- **network**: Network configuration  
-- **docker**: Docker installation and setup
-- **samba**: File server setup
-- **etckeeper**: Git-based /etc tracking
+# Only configure base system (timezone, locale, hostname)  
+sudo ./scripts/configure-system.sh --tags base yourmachine /path/to/base/image
 
-Configuration is loaded from:
+# Multiple tags
+sudo ./scripts/configure-system.sh --tags base,network yourmachine /path/to/base/image
+```
 
-1. `config/user.env` - Your personal settings
-2. `config/secrets.sops.yaml` - Encrypted secrets
-3. `ansible/group_vars/` - Role defaults and system-specific settings
+### Applying to Running Systems
 
-### TODO
+Use `realign.sh` to apply configuration to an already running system:
 
-- [ ] Install `sops` and `age`
-- [ ] Generate `~/.config/sops/age/keys.txt`
-- [ ] Run `scripts/create-sops-config.sh` to generate `.sops.yaml`
-- [ ] Encrypt `config/secrets.sops.yaml` with `sops -e -i config/secrets.sops.yaml`
+```bash
+sudo ./scripts/realign.sh
+```
 
-## 🧪 Setup
+## 📁 Directory Structure
 
-1. Clone the repo
-2. Run `install.sh` to bootstrap the base system into ZFS
-3. Run `realign.sh` any time to reapply system config
+```text
+ubuntu-zfs-installer/
+├── ansible/
+│   ├── roles/
+│   │   ├── base/           # System basics + ZFS optimization
+│   │   ├── etckeeper/      # Git tracking for /etc
+│   │   ├── network/        # Network configuration  
+│   │   └── samba/          # File server setup
+│   ├── requirements.yml    # External role dependencies
+│   ├── site.yml           # Main playbook
+│   └── inventory          # Inventory mapping
+├── config/
+│   ├── host_vars/         # Per-machine configuration
+│   ├── user.env          # User preferences  
+│   └── secrets.sops.yaml # Encrypted secrets
+└── scripts/
+    ├── create-ubuntu-base.sh  # Create ZFS-optimized base images
+    ├── configure-system.sh    # Main configuration script
+    ├── realign.sh            # Apply config to running system
+    └── create-sops-config.sh # Setup encryption
+```
 
-## 📸 Version Control
+## 🎯 Design Principles
 
-- `/etc` is tracked using `etckeeper`
-- Secrets are encrypted and stored safely in Git
+- **Simple**: systemd-nspawn containers instead of complex chroot setups
+- **Maintainable**: Use community roles where possible (e.g., geerlingguy.docker)
+- **Clean separation**: Host-specific config separate from role defaults
+- **ZFS optimized**: Proper sysctl settings for ZFS workloads
+- **Secure**: Encrypted secrets, Git tracking of /etc changes
 
 ---
 
-Built for automation, reproducibility, and sanity. Designed for use with ZFSBootMenu and Ubuntu 24.04/25.04+.
+Built for automation, reproducibility, and simplicity. Designed for ZFS-based Ubuntu systems.
+
+## 📋 Example Workflow
+
+1. **Create base image** with `scripts/create-ubuntu-base.sh` (Ubuntu 25.04 with ZFS support)
+2. **Copy and customize** a host configuration file
+3. **Run configure-system.sh** to apply all configuration
+4. **Use realign.sh** for ongoing maintenance
+5. **Track changes** automatically via etckeeper
