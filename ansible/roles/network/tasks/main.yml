@@ -1,0 +1,48 @@
+---
+# Network configuration tasks
+
+- name: Configure network settings
+  block:
+    - name: Install network tools
+      apt:
+        name:
+          - netplan.io
+        state: present
+        update_cache: true
+
+    - name: Configure netplan with host-specific settings
+      copy:
+        content: "{{ network_config | to_nice_yaml }}"
+        dest: /etc/netplan/01-netcfg.yaml
+        mode: '0600'
+        backup: true
+      when: network_config is defined
+      notify: apply netplan
+
+    - name: Configure netplan with default settings
+      copy:
+        src: 01-netcfg.yaml
+        dest: /etc/netplan/01-netcfg.yaml
+        mode: '0600'
+        backup: true
+      when: network_config is not defined
+      notify: apply netplan
+
+    - name: Update /etc/hosts with network hosts
+      blockinfile:
+        path: /etc/hosts
+        block: |
+          # Network hosts
+          {% for host, ip in network_hosts.items() %}
+          {{ ip }} {{ host }}
+          {% endfor %}
+          
+          # Private network hosts
+          {% for host, ip in private_network_hosts.items() %}
+          {{ ip }} {{ host }}
+          {% endfor %}
+        marker: "# {mark} ANSIBLE MANAGED NETWORK HOSTS"
+        backup: true
+      when: network_hosts is defined or private_network_hosts is defined
+
+  tags: ['network']

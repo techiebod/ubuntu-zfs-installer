@@ -22,12 +22,6 @@
   when: install_zfs_tools | default(false)
 
 - name: Set hostname
-  hostname:
-    name: "{{ base_hostname }}"
-  notify: Restart systemd-hostnamed
-  tags: hostname
-
-- name: Update /etc/hostname
   copy:
     content: "{{ base_hostname }}\n"
     dest: /etc/hostname

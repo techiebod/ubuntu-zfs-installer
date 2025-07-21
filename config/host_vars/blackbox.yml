@@ -1,9 +1,35 @@
 ---
 # Configuration for main ZFS server
 base_hostname: blackbox
+base_timezone: "Europe/London"
+base_locale: "en_GB.UTF-8"
+base_locales:
+  - "en_GB.UTF-8"
+  - "en_US.UTF-8" 
+  - "C.UTF-8"
+base_lang: "en_GB.UTF-8"
+base_lc_all: "en_GB.UTF-8"
+
+# Network configuration specific to blackbox
+network_config:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eno1:
+      emit-lldp: true
+      dhcp4: true
+    priv0:
+      match:
+        macaddress: d8:bb:c1:9a:39:ff
+      set-name: priv0
+      emit-lldp: true
+      dhcp4: false
+      mtu: 9000
+      addresses: [10.0.0.1/24]
 
 # Packages for main server with full ZFS toolset
-base_packages:
+install_zfs_tools: true
+zfs_packages:
   - curl
   - wget
   - vim
@@ -23,6 +49,5 @@ base_packages:
   - hdparm
   - sanoid  # ZFS snapshot management
   - mbuffer  # For faster ZFS sends
-  - syncoid  # For ZFS replication
   - tmux     # Terminal multiplexer
   - ncdu     # Disk usage analyzer

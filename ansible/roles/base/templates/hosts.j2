@@ -11,11 +11,15 @@ ff02::1         ip6-allnodes
 ff02::2         ip6-allrouters
 
 # Local network hosts (internet + local network access)
+{% if network_hosts is defined %}
 {% for hostname, ip in network_hosts.items() %}
 {{ ip }}    {{ hostname }}
 {% endfor %}
+{% endif %}
 
 # High-bandwidth private network (machine-to-machine)
+{% if private_network_hosts is defined %}
 {% for hostname, ip in private_network_hosts.items() %}
 {{ ip }}    {{ hostname }}
 {% endfor %}
+{% endif %}

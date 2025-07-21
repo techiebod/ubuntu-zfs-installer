@@ -1,0 +1,6 @@
+---
+# Network configuration handlers
+
+- name: apply netplan
+  command: netplan apply
+  listen: apply netplan

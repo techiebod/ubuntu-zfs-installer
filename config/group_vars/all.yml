@@ -37,6 +37,7 @@ base_packages:
   - software-properties-common
   - locales
   - tzdata
+  - util-linux-extra
   - git  # For etckeeper
 
 # Optional feature flags (can be overridden per host)
@@ -59,9 +60,9 @@ base_ssh_pubkey_authentication: "yes"
 # Network configuration for hosts file
 # Define your local network hosts here
 network_hosts:
-  blackbox: "192.168.1.10"
-  babybox: "192.168.1.11"
-  pibox: "192.168.1.12"
+  blackbox: "192.168.123.135"  # Current DHCP address on main network
+  babybox: "192.168.123.11"    # Expected address for babybox
+  pibox: "192.168.123.12"      # Expected address for pibox
 
 # High-bandwidth private network for machine-to-machine communication
 # Used for ZFS replication and other high-throughput operations

@@ -3,24 +3,25 @@
 
 # Timezone configuration
 # Common timezones: Europe/London, America/New_York, UTC, etc.
-base_timezone: "UTC"
+base_timezone: "{{ lookup('env', 'TIMEZONE') | default('UTC') }}"
 
 # Locale configuration
-base_locale: "en_US.UTF-8"
+base_locale: "{{ lookup('env', 'LOCALE') | default('en_US.UTF-8') }}"
 base_locales:
+  - "{{ base_locale }}"
   - "en_US.UTF-8"
   - "C.UTF-8"
 
 # Language and locale environment
-base_lang: "en_US.UTF-8"
-base_lc_all: "en_US.UTF-8"
+base_lang: "{{ base_locale }}"
+base_lc_all: "{{ base_locale }}"
 
 # Hostname configuration (can be overridden)
 base_hostname: "{{ inventory_hostname }}"
 
 # Package management
 base_update_cache: true
-base_upgrade_packages: false
+base_upgrade_packages: true
 
 # Essential packages to install
 base_packages:
@@ -36,6 +37,8 @@ base_packages:
   - software-properties-common
   - locales
   - tzdata
+  - util-linux-extra
+  - git  # For etckeeper
 
 # SSH configuration
 base_ssh_permit_root_login: "no"

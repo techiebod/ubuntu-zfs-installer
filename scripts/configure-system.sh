@@ -178,6 +178,18 @@ log "Copying configuration to base image..."
 mkdir -p "$BASE_IMAGE_PATH/tmp/ansible-config"
 cp -r "$ansible_dir"/* "$BASE_IMAGE_PATH/tmp/ansible-config/"
 cp -r "$script_dir/../config" "$BASE_IMAGE_PATH/tmp/ansible-config/"
+
+# Fix symlinks to point to correct relative paths in chroot
+cd "$BASE_IMAGE_PATH/tmp/ansible-config"
+if [[ -L "host_vars" ]]; then
+    rm host_vars
+    ln -s ./config/host_vars host_vars
+fi
+if [[ -L "group_vars" ]]; then
+    rm group_vars  
+    ln -s ./config/group_vars group_vars
+fi
+
 if [[ -f "$USER_ENV" ]]; then
     cp "$USER_ENV" "$BASE_IMAGE_PATH/tmp/ansible-config/"
 fi

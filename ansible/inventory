@@ -2,16 +2,18 @@
 localhost ansible_connection=local
 
 [zfs_systems]
-localhost
+blackbox
+babybox  
+pibox
 
 [blackbox]
-localhost
+blackbox ansible_connection=local
 
 [babybox]
-localhost
+babybox ansible_connection=local
 
-[pibox]
-localhost
+[pibox]  
+pibox ansible_connection=local
 
 [zfs_systems:vars]
 ansible_become=true

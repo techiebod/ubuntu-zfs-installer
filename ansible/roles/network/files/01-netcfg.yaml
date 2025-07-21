@@ -4,6 +4,8 @@ network:
   ethernets:
     eno1:
       dhcp4: true
-    eno2:
-      addresses: [192.168.20.10/24]
-      routes: []
+    # Additional interfaces should be configured in host_vars
+    # Example:
+    # eno2:
+    #   dhcp4: false
+    #   addresses: [10.0.0.x/24]
