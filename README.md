@@ -1,6 +1,16 @@
 # Ubuntu ZFS Installer
 
-This repo provides a modular, version-controlled, and secure system to install and maintain an Ubuntu system on ZFS root, designed to work with ZFSBootMenu.
+This repo provides a modular system to install and maintain an Ubuntu system on ZFS root, designed to work with ZFSBootMenu and use Ansible to maintain the OS and packages config.  The stages are:
+
+- Create ZFS filesystems (/ and /var/log for the chosen OS)
+- Unpack a base image and copy in key config items e.g. hostid
+- Create a chroot/container to work with pre-first-boot
+- Configure the base OS
+- Install packages and configure them
+
+Reboot into this at your lesuire and thanks to ZFSBootMenu make this a safe process!
+
+Maintain the config through a realign script and then repeat as each OS is desired.
 
 ## 🧱 Project Structure
 
@@ -13,6 +23,48 @@ This repo provides a modular, version-controlled, and secure system to install a
 ## 🔒 Security
 
 Secrets are stored in `config/secrets.sops.yaml` and encrypted using Mozilla [sops](https://github.com/mozilla/sops) and [age](https://github.com/FiloSottile/age).
+
+## ⚙️ Configuration
+
+### User Configuration
+
+1. **Copy the example config**: `cp config/user.env.example config/user.env`
+2. **Edit your settings**:
+
+   ```bash
+   USERNAME=yourusername
+   TIMEZONE=Europe/London  # Find yours: timedatectl list-timezones
+   LOCALE=en_GB.UTF-8      # Find yours: locale -a
+   ```
+
+### Secrets Configuration
+
+1. **Install sops and age**: `apt install age sops`
+2. **Generate age key**: `age-keygen -o ~/.config/sops/age/keys.txt`
+3. **Setup sops config**: `./scripts/create-sops-config.sh`
+4. **Edit secrets**: `sops config/secrets.sops.yaml`
+
+The secrets file contains:
+
+- User password hashes
+- SSH authorized keys
+- Any other sensitive configuration
+
+### System Configuration
+
+The system uses Ansible roles that are completely generic and reusable:
+
+- **base**: Timezone, locale, hostname, essential packages
+- **network**: Network configuration  
+- **docker**: Docker installation and setup
+- **samba**: File server setup
+- **etckeeper**: Git-based /etc tracking
+
+Configuration is loaded from:
+
+1. `config/user.env` - Your personal settings
+2. `config/secrets.sops.yaml` - Encrypted secrets
+3. `ansible/group_vars/` - Role defaults and system-specific settings
 
 ### TODO
 

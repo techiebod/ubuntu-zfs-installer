@@ -1,0 +1,28 @@
+---
+# Configuration for backup server
+base_hostname: babybox
+
+# Packages optimized for backup operations
+base_packages:
+  - curl
+  - wget
+  - vim
+  - htop
+  - tree
+  - unzip
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - software-properties-common
+  - locales
+  - tzdata
+  - git
+  - zfs-auto-snapshot
+  - smartmontools
+  - nvme-cli
+  - hdparm
+  - sanoid  # ZFS snapshot management
+  - mbuffer  # For faster ZFS sends
+  - syncoid  # For receiving ZFS replication
+  - rsync    # For traditional backups
+  - rclone   # For cloud backups

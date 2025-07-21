@@ -1,0 +1,18 @@
+[local]
+localhost ansible_connection=local
+
+[zfs_systems]
+localhost
+
+[blackbox]
+localhost
+
+[babybox]
+localhost
+
+[pibox]
+localhost
+
+[zfs_systems:vars]
+ansible_become=true
+ansible_become_method=sudo

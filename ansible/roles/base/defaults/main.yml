@@ -1,0 +1,47 @@
+---
+# Default variables for base role
+
+# Timezone configuration
+# Common timezones: Europe/London, America/New_York, UTC, etc.
+base_timezone: "UTC"
+
+# Locale configuration
+base_locale: "en_US.UTF-8"
+base_locales:
+  - "en_US.UTF-8"
+  - "C.UTF-8"
+
+# Language and locale environment
+base_lang: "en_US.UTF-8"
+base_lc_all: "en_US.UTF-8"
+
+# Hostname configuration (can be overridden)
+base_hostname: "{{ inventory_hostname }}"
+
+# Package management
+base_update_cache: true
+base_upgrade_packages: false
+
+# Essential packages to install
+base_packages:
+  - curl
+  - wget
+  - vim
+  - htop
+  - tree
+  - unzip
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - software-properties-common
+  - locales
+  - tzdata
+
+# SSH configuration
+base_ssh_permit_root_login: "no"
+base_ssh_password_authentication: "no"
+base_ssh_pubkey_authentication: "yes"
+
+# System settings
+base_swappiness: 10
+base_max_open_files: 65536

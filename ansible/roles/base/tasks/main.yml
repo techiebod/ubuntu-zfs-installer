@@ -1,21 +1,113 @@
-- name: Set hostname
-  copy:
-    src: etc-hostname
-    dest: /etc/hostname
+---
+- name: Update package cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  when: base_update_cache | bool
 
-- name: Copy hosts file
+- name: Upgrade all packages
+  apt:
+    upgrade: dist
+  when: base_upgrade_packages | bool
+
+- name: Install essential packages
+  apt:
+    name: "{{ base_packages }}"
+    state: present
+
+- name: Install ZFS-specific packages
+  apt:
+    name: "{{ zfs_packages }}"
+    state: present
+  when: install_zfs_tools | default(false)
+
+- name: Set hostname
+  hostname:
+    name: "{{ base_hostname }}"
+  notify: Restart systemd-hostnamed
+  tags: hostname
+
+- name: Update /etc/hostname
   copy:
-    src: etc-hosts
+    content: "{{ base_hostname }}\n"
+    dest: /etc/hostname
+    owner: root
+    group: root
+    mode: '0644'
+  tags: hostname
+
+- name: Generate hosts file from template
+  template:
+    src: hosts.j2
     dest: /etc/hosts
+    owner: root
+    group: root
+    mode: '0644'
+  tags: hostname
+
+- name: Configure timezone
+  timezone:
+    name: "{{ base_timezone }}"
+  notify: Restart systemd-timesyncd
+
+- name: Generate locales
+  locale_gen:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ base_locales }}"
+  notify: Restart systemd-localed
+
+- name: Set default locale
+  lineinfile:
+    path: /etc/default/locale
+    regexp: '^{{ item.key }}='
+    line: '{{ item.key }}={{ item.value }}'
+    create: yes
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - { key: 'LANG', value: '{{ base_lang }}' }
+    - { key: 'LC_ALL', value: '{{ base_lc_all }}' }
+  notify: Restart systemd-localed
 
 - name: Set journald config
   template:
     src: journald.conf.j2
     dest: /etc/systemd/journald.conf
+    owner: root
+    group: root
+    mode: '0644'
   notify: Restart journald
 
-- name: Set timezone
-  command: timedatectl set-timezone {{ lookup('env', 'TIMEZONE') }}
+- name: Configure system limits
+  pam_limits:
+    domain: '*'
+    limit_type: soft
+    limit_item: nofile
+    value: "{{ base_max_open_files }}"
 
-- name: Generate locale
-  command: locale-gen {{ lookup('env', 'LOCALE') }}
+- name: Configure system limits (hard)
+  pam_limits:
+    domain: '*'
+    limit_type: hard
+    limit_item: nofile
+    value: "{{ base_max_open_files }}"
+
+- name: Set vm.swappiness
+  sysctl:
+    name: vm.swappiness
+    value: "{{ base_swappiness }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-base.conf
+    reload: yes
+
+- name: Configure ZFS-specific sysctl settings
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-zfs.conf
+    reload: yes
+  loop: "{{ zfs_sysctl_settings | default([]) }}"
+  when: zfs_sysctl_settings is defined

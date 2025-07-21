@@ -20,6 +20,8 @@ DOCKER_IMAGE="ubuntu:latest"  # Latest LTS - can also use ubuntu:rolling for new
 PRESERVE_HOSTID=false
 VERBOSE=false
 DRY_RUN=false
+CONFIGURE=false
+ANSIBLE_TAGS=""
 
 # Function to show usage
 show_usage() {
@@ -39,6 +41,9 @@ OPTIONS:
     --docker-image IMAGE    Docker base image (default: ubuntu:latest)
     --preserve-hostid       Copy existing /etc/hostid from current system
                            Use this when updating an existing ZFS system
+    --configure             Automatically configure the base image with Ansible
+    --ansible-tags TAGS     Specific Ansible tags to run (comma-separated)
+                           Example: --ansible-tags timezone,locale
     --verbose               Enable verbose output
     --dry-run               Show commands without executing
     -h, --help              Show this help message
@@ -173,7 +178,7 @@ mmdebstrap \\
     --verbose \\
     --arch=$ARCH \\
     --variant=$VARIANT \\
-    --include=ca-certificates,ubuntu-keyring,systemd,init,linux-image-generic,zfsutils-linux,zfs-initramfs \\
+    --include=ca-certificates,ubuntu-keyring,systemd,init,linux-image-generic,zfsutils-linux,zfs-initramfs,apt,curl,wget \\
     --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg \\
     --customize-hook='if [ -x "\$1/usr/bin/apt-get" ]; then chroot "\$1" apt-get clean; fi' \\
     --customize-hook='rm -rf "\$1/var/lib/apt/lists/*"' \\
@@ -271,6 +276,53 @@ create_base_image() {
     fi
 }
 
+# Function to configure the base image with Ansible
+configure_base_image() {
+    local abs_target_dir
+    abs_target_dir=$(realpath "$TARGET_DIR")
+    
+    log "Configuring base image with Ansible..."
+    
+    # Get script directory and paths
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local ansible_dir="$script_dir/../ansible"
+    local configure_script="$script_dir/configure-system.sh"
+    
+    if [[ ! -d "$ansible_dir" ]]; then
+        log "ERROR: Ansible directory not found at $ansible_dir"
+        log "Please ensure the ansible/ directory exists in the project root"
+        exit 1
+    fi
+    
+    # Check if configure-system.sh exists in scripts directory
+    if [[ ! -f "$configure_script" ]]; then
+        log "ERROR: configure-system.sh not found at $configure_script"
+        exit 1
+    fi
+    
+    # Build the configure command
+    local configure_cmd="$configure_script"
+    
+    if [[ -n "$ANSIBLE_TAGS" ]]; then
+        configure_cmd+=" --tags $ANSIBLE_TAGS"
+    fi
+    
+    if [[ "$VERBOSE" == true ]]; then
+        configure_cmd+=" --verbose"
+    fi
+    
+    configure_cmd+=" $abs_target_dir"
+    
+    log "Running: $configure_cmd"
+    
+    if [[ "$DRY_RUN" == false ]]; then
+        run_cmd $configure_cmd
+    else
+        echo "DRY-RUN: $configure_cmd"
+    fi
+}
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -297,6 +349,15 @@ while [[ $# -gt 0 ]]; do
         --preserve-hostid)
             PRESERVE_HOSTID=true
             shift
+            ;;
+        --configure)
+            CONFIGURE=true
+            shift
+            ;;
+        --ansible-tags)
+            ANSIBLE_TAGS="$2"
+            CONFIGURE=true  # Automatically enable configure if tags are specified
+            shift 2
             ;;
         --verbose)
             VERBOSE=true
@@ -341,6 +402,11 @@ main() {
     check_docker
     get_ubuntu_info
     create_base_image
+    
+    # Configure the base image if requested
+    if [[ "$CONFIGURE" == true ]]; then
+        configure_base_image
+    fi
     
     log "Ubuntu base image creation completed"
 }

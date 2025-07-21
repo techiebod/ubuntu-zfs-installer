@@ -1,0 +1,52 @@
+---
+# Ubuntu ZFS System Configuration Playbook
+# This playbook configures a ZFS-ready Ubuntu system with all necessary components
+
+- name: Configure ZFS Ubuntu System
+  hosts: zfs_systems
+  become: true
+  gather_facts: true
+  
+  pre_tasks:
+    - name: Show system information
+      debug:
+        msg: |
+          Configuring {{ inventory_hostname }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Timezone: {{ base_timezone }}
+          Locale: {{ base_locale }}
+          Hostname: {{ base_hostname }}
+
+  roles:
+    - role: base
+      tags: ['base', 'timezone', 'locale', 'hostname']
+    
+    - role: etckeeper
+      tags: ['etckeeper', 'git']
+    
+    - role: network
+      tags: ['network']
+    
+    - role: docker
+      tags: ['docker', 'containers']
+      when: install_docker | default(true)
+    
+    - role: samba
+      tags: ['samba', 'fileserver']
+      when: install_samba | default(false)
+
+  post_tasks:
+    - name: Show configuration summary
+      debug:
+        msg: |
+          Configuration completed for {{ inventory_hostname }}
+          Timezone: {{ ansible_date_time.tz }}
+          Locale: {{ ansible_env.LANG | default('Not set') }}
+          Hostname: {{ ansible_hostname }}
+
+    - name: Reboot if required
+      reboot:
+        msg: "Rebooting to apply all changes"
+        pre_reboot_delay: 5
+        post_reboot_delay: 10
+      when: ansible_reboot_required | default(false)

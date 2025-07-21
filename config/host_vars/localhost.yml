@@ -1,0 +1,39 @@
+---
+# Example host variables for localhost
+# Copy this file and modify for your specific machine
+
+# Basic system configuration
+base_hostname: "zfs-system"
+base_timezone: "Europe/London"  # Change to your timezone
+base_locale: "en_GB.UTF-8"      # Change to your locale
+base_locales:
+  - "en_GB.UTF-8"
+  - "en_US.UTF-8" 
+  - "C.UTF-8"
+base_lang: "en_GB.UTF-8"
+base_lc_all: "en_GB.UTF-8"
+
+# System tuning
+base_update_cache: true
+base_upgrade_packages: false  # Set to true for fresh installs
+base_swappiness: 1            # Lower for ZFS systems
+base_max_open_files: 65536
+
+# Additional packages for ZFS systems
+base_packages:
+  - curl
+  - wget
+  - vim
+  - htop
+  - tree
+  - unzip
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - software-properties-common
+  - locales
+  - tzdata
+  - zfs-auto-snapshot
+  - smartmontools
+  - nvme-cli
+  - hdparm

@@ -1,0 +1,28 @@
+---
+# Configuration for main ZFS server
+base_hostname: blackbox
+
+# Packages for main server with full ZFS toolset
+base_packages:
+  - curl
+  - wget
+  - vim
+  - htop
+  - tree
+  - unzip
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - software-properties-common
+  - locales
+  - tzdata
+  - git
+  - zfs-auto-snapshot
+  - smartmontools
+  - nvme-cli
+  - hdparm
+  - sanoid  # ZFS snapshot management
+  - mbuffer  # For faster ZFS sends
+  - syncoid  # For ZFS replication
+  - tmux     # Terminal multiplexer
+  - ncdu     # Disk usage analyzer
