@@ -38,6 +38,7 @@ base_packages:
   - tzdata
   - util-linux-extra  # Required for hwclock/timezone
   - git  # For etckeeper
+  - zsh  # Required for henry's shell
   - openssh-server     # Remote access
   - rsync              # File transfers, ZFS sends
   - smartmontools      # Disk monitoring

@@ -1,14 +1,6 @@
 ---
 # Configuration for main ZFS server
 base_hostname: blackbox
-base_timezone: "Europe/London"
-base_locale: "en_GB.UTF-8"
-base_locales:
-  - "en_GB.UTF-8"
-  - "en_US.UTF-8" 
-  - "C.UTF-8"
-base_lang: "en_GB.UTF-8"
-base_lc_all: "en_GB.UTF-8"
 
 # Network configuration specific to blackbox
 network_config:
@@ -56,19 +48,28 @@ extra_packages:
 # System users to create
 system_users:
   - name: henry
-    password_hash: "{{ users.henry.password_hash }}"
-    shell: /bin/zsh
-    groups: ["docker", "sudo"]
+    password_hash: "{{ secrets.users.henry.password_hash }}"
+    uid: 1000  # Preserve existing UID
+    group: henry  # Primary group
+    groups: ["adm", "docker", "sudo"]  # Essential groups for system access
+    shell: /bin/zsh  # Ensure zsh is the default shell
+    home: /home/henry  # Explicit home directory (on ZFS partition)
+    create_home: true  # Ensure home exists but won't overwrite existing
   - name: timemachine
+    password_hash: "{{ secrets.users.timemachine.password_hash }}"
     shell: /bin/false
     groups: []
   - name: paperless
+    password_hash: "{{ secrets.users.paperless.password_hash }}"
     shell: /bin/false
     groups: []
 
 
 # Enable Samba file server
 install_samba: true
+
+# Enable share-specific include files
+samba_shares_include_files: true
 
 # Samba configuration for TimeMachine and file sharing
 samba_apple_extensions: true
@@ -100,25 +101,29 @@ samba_global_config_extras: |
   # Multicast DNS registration for macOS discovery
   multicast dns register = yes
   
-  # Authentication settings
+  # Use PAM authentication - no separate Samba passwords needed!
+  security = user
+  passdb backend = tdbsam
+  pam password change = yes
   obey pam restrictions = yes
   unix password sync = yes
-  passwd program = /usr/bin/passwd %u
-  passwd chat = *Enter\snew\s*\spassword:* %n\n *Retype\snew\s*\spassword:* %n\n *password\supdated\ssuccessfully* .
-  pam password change = yes
+  encrypt passwords = yes
   map to guest = bad user
+  
+  # This allows authentication against system passwords
+  invalid users = root
   
   # Panic action for debugging
   panic action = /usr/share/samba/panic-action %d
 
-# Samba users (passwords should be set separately or via vault)
+# Samba users need to exist in database even with PAM authentication
 samba_users:
   - name: henry
-    password: "{{ henry_samba_password | default('changeme') }}"
+    password: "temp_password"  # This will be synced with system password
   - name: timemachine
-    password: "{{ timemachine_samba_password | default('changeme') }}"
+    password: "temp_password"  # This will be synced with system password
   - name: paperless
-    password: "{{ paperless_samba_password | default('changeme') }}"
+    password: "temp_password"  # This will be synced with system password
 
 # Samba shares configuration
 samba_shares:

@@ -1,11 +1,19 @@
-[local]
-localhost ansible_connection=local
-
-[zfs_systems]
-blackbox ansible_connection=local
-babybox ansible_connection=local  
-pibox ansible_connection=local
-
-[zfs_systems:vars]
+[all:vars]
 ansible_become=true
 ansible_become_method=sudo
+ansible_connection=local
+
+# Global defaults
+base_timezone=Europe/London
+base_locale=en_GB.UTF-8
+base_lang=en_GB.UTF-8
+base_lc_all=en_GB.UTF-8
+base_locales=["en_GB.UTF-8", "en_US.UTF-8", "C.UTF-8"]
+
+[local]
+localhost
+
+[servers]
+blackbox
+babybox  
+pibox

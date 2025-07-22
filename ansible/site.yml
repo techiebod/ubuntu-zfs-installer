@@ -3,7 +3,7 @@
 # This playbook configures a ZFS-ready Ubuntu system with all necessary components
 
 - name: Configure ZFS Ubuntu System
-  hosts: zfs_systems
+  hosts: servers
   become: true
   gather_facts: true
   

@@ -25,4 +25,6 @@
     name: avahi-daemon
     state: started
     enabled: true
-  when: install_samba | default(false)
+  when: 
+    - install_samba | default(false)
+    - false  # Disabled for container testing - enable for production
