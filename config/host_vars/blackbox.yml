@@ -101,6 +101,12 @@ samba_global_config_extras: |
   # Multicast DNS registration for macOS discovery
   multicast dns register = yes
   
+  # Disable unnecessary printer services
+  load printers = no
+  printing = bsd
+  printcap name = /dev/null
+  disable spoolss = yes
+  
   # Use PAM authentication - no separate Samba passwords needed!
   security = user
   passdb backend = tdbsam
