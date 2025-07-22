@@ -1,0 +1,7 @@
+---
+# Handlers for samba role
+
+- name: restart avahi-daemon
+  service:
+    name: avahi-daemon
+    state: restarted

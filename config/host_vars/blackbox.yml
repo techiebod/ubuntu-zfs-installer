@@ -47,3 +47,148 @@ docker_daemon_options:
 # Additional packages for this server (if any)
 extra_packages:
   - ncdu  # Disk usage analyzer
+  - prometheus-node-exporter
+  - sanoid
+  - unattended-upgrades
+  - avahi-daemon
+  - avahi-utils
+
+# System users to create
+system_users:
+  - name: henry
+    password_hash: "{{ users.henry.password_hash }}"
+    shell: /bin/zsh
+    groups: ["docker", "sudo"]
+  - name: timemachine
+    shell: /bin/false
+    groups: []
+  - name: paperless
+    shell: /bin/false
+    groups: []
+
+
+# Enable Samba file server
+install_samba: true
+
+# Samba configuration for TimeMachine and file sharing
+samba_apple_extensions: true
+samba_workgroup: WORKGROUP
+samba_server_string: "%h server (Samba, Ubuntu)"
+samba_netbios_name: "{{ base_hostname }}"
+samba_log: /var/log/samba.log
+samba_log_level: 2
+samba_log_size: 1000
+samba_server_min_protocol: SMB2_02
+samba_enable_netbios: true
+samba_mdns_name: netbios
+samba_load_homes: true
+
+# Global Samba configuration extras for Apple/TimeMachine support
+samba_global_config_extras: |
+  # Apple/macOS optimizations
+  vfs objects = fruit streams_xattr
+  fruit:appl = yes
+  fruit:nfs_aces = no
+  fruit:copyfile = no
+  fruit:metadata = stream
+  fruit:model = MacSamba
+  fruit:posix_rename = yes
+  fruit:veto_appledouble = no
+  fruit:wipe_intentionally_left_blank_rfork = yes
+  fruit:delete_empty_adfiles = yes
+  
+  # Multicast DNS registration for macOS discovery
+  multicast dns register = yes
+  
+  # Authentication settings
+  obey pam restrictions = yes
+  unix password sync = yes
+  passwd program = /usr/bin/passwd %u
+  passwd chat = *Enter\snew\s*\spassword:* %n\n *Retype\snew\s*\spassword:* %n\n *password\supdated\ssuccessfully* .
+  pam password change = yes
+  map to guest = bad user
+  
+  # Panic action for debugging
+  panic action = /usr/share/samba/panic-action %d
+
+# Samba users (passwords should be set separately or via vault)
+samba_users:
+  - name: henry
+    password: "{{ henry_samba_password | default('changeme') }}"
+  - name: timemachine
+    password: "{{ timemachine_samba_password | default('changeme') }}"
+  - name: paperless
+    password: "{{ paperless_samba_password | default('changeme') }}"
+
+# Samba shares configuration
+samba_shares:
+  - name: timemachine
+    comment: "Time Machine Backup"
+    path: /fs/TimeMachine
+    vfs_objects:
+      - name: catia
+      - name: fruit
+        options:
+          - name: time machine
+            value: "yes"
+          - name: time machine max size
+            value: "100G"
+      - name: streams_xattr
+    valid_users: timemachine
+    browseable: true
+    guest_ok: false
+    writeable: true
+    create_mode: "0644"
+    directory_mode: "0755"
+
+  - name: media
+    comment: "Media Files"
+    path: /fs/media
+    vfs_objects:
+      - name: fruit
+      - name: streams_xattr
+    valid_users: henry
+    browseable: true
+    guest_ok: false
+    writeable: true
+    create_mode: "0644"
+    directory_mode: "0754"
+    user: henry
+
+  - name: downloads
+    comment: "Downloads"
+    path: /var/tmp/downloads
+    vfs_objects:
+      - name: fruit
+      - name: streams_xattr
+    valid_users: henry
+    browseable: true
+    guest_ok: false
+    writeable: true
+    create_mode: "0644"
+    directory_mode: "0754"
+    user: henry
+
+  - name: scanners
+    comment: "Put scanned docs here for consumption by Paperless"
+    path: /fs/docker/paperless/consume
+    valid_users: henry
+    browseable: true
+    guest_ok: false
+    writeable: true
+    create_mode: "0644"
+    directory_mode: "0755"
+
+  - name: incoming
+    comment: "Incoming photos directory"
+    path: /fs/docker/volumes/paperless/consume
+    vfs_objects:
+      - name: fruit
+      - name: streams_xattr
+    valid_users: henry
+    browseable: true
+    guest_ok: false
+    writeable: true
+    create_mode: "0644"
+    directory_mode: "0754"
+    user: henry

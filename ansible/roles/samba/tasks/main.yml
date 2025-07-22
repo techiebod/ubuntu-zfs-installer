@@ -1,0 +1,28 @@
+---
+# Samba complementary tasks (Avahi configuration for TimeMachine discovery)
+# The main Samba installation and configuration is handled by vladgh.samba.server
+
+- name: Install Avahi daemon for Samba discovery
+  package:
+    name:
+      - avahi-daemon
+      - avahi-utils
+    state: present
+  when: install_samba | default(false)
+
+- name: Configure Avahi service for Samba TimeMachine discovery
+  template:
+    src: avahi-samba.service.j2
+    dest: /etc/avahi/services/samba.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart avahi-daemon
+  when: install_samba | default(false)
+
+- name: Ensure avahi-daemon is started and enabled
+  service:
+    name: avahi-daemon
+    state: started
+    enabled: true
+  when: install_samba | default(false)

@@ -105,3 +105,15 @@
     reload: yes
   loop: "{{ zfs_sysctl_settings | default([]) }}"
   when: zfs_sysctl_settings is defined
+
+- name: Create system users
+  user:
+    name: "{{ item.name }}"
+    password: "{{ item.password_hash | default(omit) }}"
+    shell: "{{ item.shell | default('/bin/bash') }}"
+    groups: "{{ item.groups | default([]) }}"
+    append: yes
+    create_home: yes
+    state: present
+  loop: "{{ system_users | default([]) }}"
+  when: system_users is defined

@@ -31,8 +31,12 @@
       tags: ['docker', 'containers']
       when: docker_users is defined and docker_users | length > 0
     
-    - role: samba
+    - role: vladgh.samba.server
       tags: ['samba', 'fileserver']
+      when: install_samba | default(false)
+    
+    - role: samba
+      tags: ['samba', 'avahi', 'timemachine']
       when: install_samba | default(false)
 
   post_tasks:
