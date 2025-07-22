@@ -1,0 +1,27 @@
+---
+# Example configuration showing how to use Debian instead of Ubuntu
+# Copy this to your host_vars/<hostname>.yml file to override defaults
+
+# Base OS configuration - override the global defaults
+base_distribution: debian
+base_codename: bookworm  # Debian 12
+base_mirror: http://deb.debian.org/debian
+
+# Rest of your configuration...
+base_hostname: debian-server
+
+# System packages (Debian-specific names may differ)
+base_packages:
+  - curl
+  - wget
+  - vim
+  - htop
+  - tree
+  - unzip
+  - ca-certificates
+  - gnupg
+  - software-properties-common
+  - locales
+  - tzdata
+  - zfs-auto-snapshot
+  - smartmontools

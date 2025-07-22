@@ -4,7 +4,7 @@ This repo provides a simplified system to configure Ubuntu systems on ZFS using 
 
 ## 🧱 Project Structure
 
-- `scripts/create-ubuntu-base.sh` — Create ZFS-optimized Ubuntu base images
+- `scripts/install-base-os.sh` — Create ZFS-optimized base images for Ubuntu, Debian, and other distributions
 - `scripts/configure-system.sh` — Main script to configure systems using systemd-nspawn + Ansible
 - `config/host_vars/` — Per-machine configuration (hostname, network, packages, etc.)
 - `config/user.env` — User settings (username, timezone, locale)
@@ -131,7 +131,7 @@ ubuntu-zfs-installer/
 │   ├── user.env          # User preferences  
 │   └── secrets.sops.yaml # Encrypted secrets
 └── scripts/
-    ├── create-ubuntu-base.sh  # Create ZFS-optimized base images
+    ├── install-base-os.sh      # Create ZFS-optimized base images for multiple distributions
     ├── configure-system.sh    # Main configuration script
     ├── realign.sh            # Apply config to running system
     └── create-sops-config.sh # Setup encryption
@@ -151,7 +151,7 @@ Built for automation, reproducibility, and simplicity. Designed for ZFS-based Ub
 
 ## 📋 Example Workflow
 
-1. **Create base image** with `scripts/create-ubuntu-base.sh` (Ubuntu 25.04 with ZFS support)
+1. **Create base image** with `scripts/install-base-os.sh --distribution ubuntu --version 25.04 --codename plucky` (Ubuntu 25.04 with ZFS support)
 2. **Copy and customize** a host configuration file
 3. **Run configure-system.sh** to apply all configuration
 4. **Use realign.sh** for ongoing maintenance

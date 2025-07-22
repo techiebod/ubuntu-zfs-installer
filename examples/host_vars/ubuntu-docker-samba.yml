@@ -1,0 +1,46 @@
+---
+# Example configuration for Ubuntu server with Docker and Samba
+# Copy this to your config/host_vars/<hostname>.yml file
+
+# Basic system configuration
+base_hostname: file-server
+
+# Network configuration
+network_config:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eno1:
+      dhcp4: true
+
+# Docker configuration
+docker_install_compose: true
+docker_users:
+  - fileserver
+
+# System users
+system_users:
+  - name: fileserver
+    password_hash: "{{ secrets.users.fileserver.password_hash }}"
+    uid: 1000
+    group: fileserver
+    groups: ["adm", "docker", "sudo"]
+    shell: /bin/bash
+    home: /home/fileserver
+    create_home: true
+
+# Enable Samba file server
+install_samba: true
+samba_apple_extensions: true
+samba_workgroup: WORKGROUP
+samba_server_string: "%h server (Samba, Ubuntu)"
+
+# Samba shares
+samba_shares:
+  - name: shared
+    comment: "Shared Files"
+    path: /srv/shared
+    valid_users: fileserver
+    browseable: true
+    guest_ok: false
+    writeable: true

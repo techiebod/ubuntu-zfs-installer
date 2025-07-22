@@ -11,6 +11,10 @@
 
 set -euo pipefail
 
+# Source common library
+script_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+source "$script_dir/../lib/common.sh"
+
 # Function to get codename for a given version
 get_codename() {
     local version="$1"

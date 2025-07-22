@@ -1,0 +1,42 @@
+---
+# Example configuration for Raspberry Pi 4 (ARM64)
+# Copy this to your config/host_vars/pibox.yml file
+
+# Basic system configuration
+base_hostname: pibox
+base_architecture: arm64  # Raspberry Pi 4 uses ARM64
+
+# Network configuration (Pi-specific)
+network_config:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: true
+  wifis:
+    wlan0:
+      dhcp4: true
+      access-points:
+        "YourWiFiNetwork":
+          password: "{{ secrets.wifi.password }}"
+
+# System users
+system_users:
+  - name: pi
+    password_hash: "{{ secrets.users.pi.password_hash }}"
+    uid: 1000
+    group: pi
+    groups: ["adm", "sudo"]
+    shell: /bin/bash
+    home: /home/pi
+    create_home: true
+
+# Pi-specific packages
+extra_packages:
+  - curl
+  - wget
+  - vim
+  - htop
+  - tree
+  - wireless-tools  # WiFi management
+  - firmware-brcm80211  # Pi WiFi firmware (if needed)

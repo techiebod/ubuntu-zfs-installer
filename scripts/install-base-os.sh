@@ -1,41 +1,48 @@
 #!/bin/bash
 
-# Script to create Ubuntu base image using mmdebstrap via Docker
-# Usage: ./create_ubuntu_base.sh [OPTIONS] TARGET_DIR
+# Script to create base system image using mmdebstrap via Docker
+# Usage: ./install-base-os.sh [OPTIONS] TARGET_DIR
 # 
-# This script uses the get-ubuntu-version.sh script to get Ubuntu version information
-# and creates a minimal ZFS-ready base image using mmdebstrap running in a Docker container.
+# This script creates a minimal ZFS-ready base image using mmdebstrap running in a Docker container.
+# Supports Ubuntu, Debian, and other mmdebstrap-compatible distributions.
 # The base image is designed to be configured with Ansible for machine-specific settings.
 
 set -euo pipefail
 
+# Source common library
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$script_dir/../lib/common.sh"
+
 # Default values
-UBUNTU_VERSION=""
-UBUNTU_CODENAME=""
+DISTRIBUTION="$DEFAULT_DISTRIBUTION"
+VERSION=""
+CODENAME=""
 TARGET_DIR=""
-ARCH="amd64"
-VARIANT="minbase"
-MIRROR="http://archive.ubuntu.com/ubuntu"
-DOCKER_IMAGE="ubuntu:latest"  # Latest LTS - can also use ubuntu:rolling for newest release or ubuntu:24.04 for specific LTS
+ARCH="$DEFAULT_ARCH"
+VARIANT="$DEFAULT_VARIANT"
+MIRROR=""
+DOCKER_IMAGE="$DEFAULT_DOCKER_IMAGE"
 PRESERVE_HOSTID=false
-VERBOSE=false
-DRY_RUN=false
 CONFIGURE=false
 ANSIBLE_TAGS=""
 
 # Function to show usage
-show_usage() {
+show_help() {
     cat << EOF
 Usage: $0 [OPTIONS] TARGET_DIR
 
-Create a minimal ZFS-ready Ubuntu base image using mmdebstrap via Docker.
+Create a minimal ZFS-ready base system image using mmdebstrap via Docker.
+Supports Ubuntu, Debian, and other mmdebstrap-compatible distributions.
 Designed for use with ZFSBootMenu (GRUB is excluded and held to prevent installation).
 
 OPTIONS:
-    -v, --version VERSION    Ubuntu version (e.g., 25.04, 24.04)
-                           If not specified, uses latest from get-ubuntu-version.sh
+    -d, --distribution DIST  Distribution (ubuntu, debian, or any mmdebstrap-compatible) (default: ubuntu)
+    -v, --version VERSION    Distribution version (e.g., 25.04, 24.04 for Ubuntu; 12, 11 for Debian)
+    -c, --codename CODENAME  Distribution codename (e.g., plucky, noble, bookworm, bullseye)
+                           Note: For Ubuntu/Debian, specify either --version OR --codename (the other will be derived)
     -a, --arch ARCH         Target architecture (default: amd64)
-    -m, --mirror URL        Ubuntu mirror URL (default: archive.ubuntu.com)
+    -m, --mirror URL        Distribution mirror URL 
+                           (default: archive.ubuntu.com for Ubuntu, deb.debian.org for Debian)
     --variant VARIANT       Debootstrap variant (default: minbase)
                            Options: essential, apt, required, minbase, buildd
     --docker-image IMAGE    Docker base image (default: ubuntu:latest)
@@ -46,24 +53,44 @@ OPTIONS:
                            Example: --ansible-tags timezone,locale
     --verbose               Enable verbose output
     --dry-run               Show commands without executing
+    --debug                 Enable debug output
     -h, --help              Show this help message
 
+EXAMPLES:
+    # Create Ubuntu 25.04 base system (specify version, codename derived)
+    $0 --version 25.04 /mnt/base-system
+    
+    # Create Ubuntu base system (specify codename, version derived)  
+    $0 --codename plucky /mnt/base-system
+    
+    # Create Debian 12 (specify version, codename derived)
+    $0 --distribution debian --version 12 /mnt/base-system
+    
+    # Create with custom mirror
+    $0 --version 24.04 --mirror http://gb.archive.ubuntu.com/ubuntu /mnt/base-system
+
 TARGET_DIR:
-    Directory where the Ubuntu base image will be created.
+    Directory where the base image will be created.
     Will be created if it doesn't exist.
 
 EXAMPLES:
-    # Create latest Ubuntu base image in /mnt (recommended)
-    $0 /mnt/ubuntu-base
+    # Create Ubuntu 24.04 LTS base image (specify version)
+    $0 --version 24.04 /mnt/ubuntu-base
+
+    # Create Ubuntu base image (specify codename) 
+    $0 --codename noble /mnt/ubuntu-base
+
+    # Create Debian 12 base image
+    $0 --distribution debian --version 12 /mnt/debian-base
 
     # Update existing ZFS system - preserve current hostid
-    $0 --preserve-hostid /mnt/ubuntu-base
+    $0 --version 24.04 --preserve-hostid /mnt/ubuntu-base
 
     # Create specific version with custom architecture
     $0 --version 24.04 --arch arm64 /mnt/ubuntu-arm64-base
 
     # Use custom mirror and rolling Docker image
-    $0 --mirror http://us.archive.ubuntu.com/ubuntu --docker-image ubuntu:rolling /mnt/ubuntu-base
+    $0 --codename noble --mirror http://us.archive.ubuntu.com/ubuntu --docker-image ubuntu:rolling /mnt/ubuntu-base
 
 ZFS FEATURES:
     - Includes zfsutils-linux and zfs-initramfs
@@ -83,116 +110,51 @@ POST-INSTALL CONFIGURATION:
 
 REQUIREMENTS:
     - Docker must be installed and running
-    - get-ubuntu-version.sh script must be in the same directory or in PATH
-    - jq (for Ubuntu version/codename lookup) - install with: apt install jq
+    - Either --version OR --codename must be specified (for Ubuntu/Debian, the other will be derived)
 EOF
-}
-
-# Function to log messages
-log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >&2
-}
-
-# Function to run commands with optional dry-run
-run_cmd() {
-    if [[ "$VERBOSE" == true ]]; then
-        log "Running: $*"
-    fi
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        echo "DRY-RUN: $*"
-        return 0
-    fi
-    
-    "$@"
-}
-
-# Function to check if Docker is available
-check_docker() {
-    if ! command -v docker >/dev/null 2>&1; then
-        log "ERROR: Docker is not installed or not in PATH"
-        exit 1
-    fi
-    
-    if ! docker info >/dev/null 2>&1; then
-        log "ERROR: Docker is not running or not accessible"
-        log "Make sure Docker is running and you have permission to use it"
-        exit 1
-    fi
-}
-
-# Function to get Ubuntu version and codename
-get_ubuntu_info() {
-    local ubuntu_script=""
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    
-    # Look for get-ubuntu-version.sh script
-    if [[ -f "$script_dir/get-ubuntu-version.sh" ]]; then
-        ubuntu_script="$script_dir/get-ubuntu-version.sh"
-    elif [[ -f "./get-ubuntu-version.sh" ]]; then
-        ubuntu_script="./get-ubuntu-version.sh"
-    elif command -v get-ubuntu-version.sh >/dev/null 2>&1; then
-        ubuntu_script="get-ubuntu-version.sh"
-    else
-        log "ERROR: get-ubuntu-version.sh script not found"
-        log "Please ensure get-ubuntu-version.sh is in the same directory as this script or in PATH"
-        exit 1
-    fi
-    
-    # Get version and codename
-    if [[ -z "$UBUNTU_VERSION" ]]; then
-        # Get latest version
-        UBUNTU_VERSION=$($ubuntu_script)
-        if [[ $? -ne 0 ]] || [[ -z "$UBUNTU_VERSION" ]]; then
-            log "ERROR: Failed to get Ubuntu version from $ubuntu_script"
-            exit 1
-        fi
-        # Get codename for the latest version
-        UBUNTU_CODENAME=$($ubuntu_script --codename)
-    else
-        # Version was specified, get the codename for this specific version
-        UBUNTU_CODENAME=$($ubuntu_script --codename "$UBUNTU_VERSION")
-        if [[ $? -ne 0 ]] || [[ -z "$UBUNTU_CODENAME" ]]; then
-            log "ERROR: Could not get codename for Ubuntu $UBUNTU_VERSION"
-            log "Please verify this is a valid Ubuntu version"
-            exit 1
-        fi
-    fi
-    
-    # Warn if using a very new release that might not have stable keys
-    if [[ "$UBUNTU_VERSION" > "24.10" ]]; then
-        log "WARNING: Using very new Ubuntu release $UBUNTU_VERSION"
-        log "If you encounter GPG key issues, try using --version 24.04 for the latest LTS"
-    fi
-    
-    log "Using Ubuntu $UBUNTU_VERSION ($UBUNTU_CODENAME)"
 }
 
 # Function to create mmdebstrap command
 create_mmdebstrap_cmd() {
     local target_path="/output"
+    local base_packages
+    
+    # Set distribution-specific defaults
+    case "$DISTRIBUTION" in
+        ubuntu)
+            base_packages="ca-certificates,ubuntu-keyring,systemd,init,linux-image-generic,zfsutils-linux,zfs-initramfs,apt,curl,wget"
+            ;;
+        debian)
+            base_packages="ca-certificates,debian-archive-keyring,systemd,systemd-sysv,linux-image-amd64,zfsutils-linux,zfs-initramfs,apt,curl,wget"
+            ;;
+        *)
+            # Generic defaults for other distributions
+            base_packages="ca-certificates,systemd,linux-image-generic,zfsutils-linux,zfs-initramfs,apt,curl,wget"
+            ;;
+    esac
+    
+    # Use custom mirror if provided, otherwise use distribution default
+    local mirror_url="${MIRROR:-${DIST_MIRRORS[$DISTRIBUTION]}}"
     
     cat << EOF
 mmdebstrap \\
     --verbose \\
     --arch=$ARCH \\
     --variant=$VARIANT \\
-    --include=ca-certificates,ubuntu-keyring,systemd,init,linux-image-generic,zfsutils-linux,zfs-initramfs,apt,curl,wget \\
-    --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg \\
+    --include=$base_packages \\
     --customize-hook='if [ -x "\$1/usr/bin/apt-get" ]; then chroot "\$1" apt-get clean; fi' \\
     --customize-hook='rm -rf "\$1/var/lib/apt/lists/*"' \\
     --customize-hook='rm -rf "\$1/tmp/*"' \\
     --customize-hook='rm -rf "\$1/var/tmp/*"' \\
     --customize-hook='rm -rf "\$1/var/cache/apt/archives/*.deb"' \\
-    --customize-hook='echo "grub-pc hold" | chroot "\$1" dpkg --set-selections' \\
-    --customize-hook='echo "grub-pc-bin hold" | chroot "\$1" dpkg --set-selections' \\
-    --customize-hook='echo "grub2-common hold" | chroot "\$1" dpkg --set-selections' \\
-    --customize-hook='echo "grub-common hold" | chroot "\$1" dpkg --set-selections' \\
+    --customize-hook='echo "grub-pc hold" | chroot "\$1" dpkg --set-selections 2>/dev/null || true' \\
+    --customize-hook='echo "grub-pc-bin hold" | chroot "\$1" dpkg --set-selections 2>/dev/null || true' \\
+    --customize-hook='echo "grub2-common hold" | chroot "\$1" dpkg --set-selections 2>/dev/null || true' \\
+    --customize-hook='echo "grub-common hold" | chroot "\$1" dpkg --set-selections 2>/dev/null || true' \\
     --customize-hook='chroot "\$1" apt-mark hold grub-pc grub-pc-bin grub2-common grub-common 2>/dev/null || true' \\
-    $UBUNTU_CODENAME \\
+    $CODENAME \\
     $target_path \\
-    $MIRROR
+    $mirror_url
 EOF
 }
 
@@ -208,7 +170,7 @@ create_base_image() {
     local mmdebstrap_cmd
     mmdebstrap_cmd=$(create_mmdebstrap_cmd)
     
-    log "Creating Ubuntu $UBUNTU_VERSION base image in $abs_target_dir"
+    log "Creating $DISTRIBUTION $VERSION base image in $abs_target_dir"
     
     if [[ "$VERBOSE" == true ]]; then
         log "mmdebstrap command:"
@@ -227,17 +189,9 @@ create_base_image() {
             apt-get update
             
             echo 'Installing mmdebstrap and dependencies...'
-            apt-get install -y mmdebstrap ubuntu-keyring wget gnupg
+            apt-get install -y mmdebstrap wget gnupg
             
-            echo 'Updating Ubuntu keyring for latest releases...'
-            # Refresh the Ubuntu keyring to ensure we have keys for newer releases
-            wget -q -O /tmp/ubuntu-keyring.gpg https://archive.ubuntu.com/ubuntu/project/ubuntu-archive-keyring.gpg || true
-            if [[ -s /tmp/ubuntu-keyring.gpg ]]; then
-                cp /tmp/ubuntu-keyring.gpg /usr/share/keyrings/ubuntu-archive-keyring.gpg
-                echo 'Updated Ubuntu keyring'
-            fi
-            
-            echo 'Creating Ubuntu $UBUNTU_VERSION ($UBUNTU_CODENAME) base image...'
+            echo 'Creating $DISTRIBUTION $VERSION ($CODENAME) base image...'
             $mmdebstrap_cmd
             
             # Handle hostid preservation
@@ -253,10 +207,10 @@ create_base_image() {
         if [[ -d "$abs_target_dir/bin" ]] && [[ -d "$abs_target_dir/etc" ]] && [[ -d "$abs_target_dir/usr" ]]; then
             local size
             size=$(du -sh "$abs_target_dir" 2>/dev/null | cut -f1 || echo "unknown")
-            log "Successfully created ZFS-ready Ubuntu base image:"
+            log "Successfully created ZFS-ready $DISTRIBUTION base image:"
             log "  Directory: $abs_target_dir"
             log "  Size: $size"
-            log "  Version: Ubuntu $UBUNTU_VERSION ($UBUNTU_CODENAME)"
+            log "  Version: $DISTRIBUTION $VERSION ($CODENAME)"
             log "  Architecture: $ARCH"
             log "  ZFS Support: Included (zfsutils-linux, zfs-initramfs)"
             if [[ "$PRESERVE_HOSTID" == true ]] && [[ -f "/etc/hostid" ]]; then
@@ -326,8 +280,16 @@ configure_base_image() {
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
+        -d|--distribution)
+            DISTRIBUTION="$2"
+            shift 2
+            ;;
         -v|--version)
-            UBUNTU_VERSION="$2"
+            VERSION="$2"
+            shift 2
+            ;;
+        -c|--codename)
+            CODENAME="$2"
             shift 2
             ;;
         -a|--arch)
@@ -367,21 +329,22 @@ while [[ $# -gt 0 ]]; do
             DRY_RUN=true
             shift
             ;;
+        --debug)
+            DEBUG=true
+            shift
+            ;;
         -h|--help)
-            show_usage
+            show_help
             exit 0
             ;;
         -*)
-            log "ERROR: Unknown option $1"
-            echo "Use --help for usage information" >&2
-            exit 1
+            die "Unknown option $1. Use --help for usage information"
             ;;
         *)
             if [[ -z "$TARGET_DIR" ]]; then
                 TARGET_DIR="$1"
             else
-                log "ERROR: Multiple target directories specified"
-                exit 1
+                die "Multiple target directories specified"
             fi
             shift
             ;;
@@ -389,18 +352,28 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate arguments
-if [[ -z "$TARGET_DIR" ]]; then
-    log "ERROR: TARGET_DIR is required"
-    show_usage
-    exit 1
+require_arg "TARGET_DIR" "$TARGET_DIR"
+
+# Require at least one of version or codename
+if [[ -z "$VERSION" ]] && [[ -z "$CODENAME" ]]; then
+    die "Either --version OR --codename is required
+Examples:
+  --version 25.04    (codename 'plucky' will be derived)
+  --codename plucky  (version '25.04' will be derived)
+  --version 12       (for Debian, codename 'bookworm' will be derived)"
 fi
 
 # Main execution
 main() {
-    log "Starting Ubuntu base image creation"
+    log "Starting $DISTRIBUTION base image creation"
     
     check_docker
-    get_ubuntu_info
+    validate_distribution_info "$DISTRIBUTION" "$VERSION" "$CODENAME"
+    
+    # Update our variables with the validated/derived values
+    VERSION="$DERIVED_VERSION"
+    CODENAME="$DERIVED_CODENAME"
+    
     create_base_image
     
     # Configure the base image if requested
@@ -408,7 +381,7 @@ main() {
         configure_base_image
     fi
     
-    log "Ubuntu base image creation completed"
+    log "$DISTRIBUTION base image creation completed"
 }
 
 # Run main function

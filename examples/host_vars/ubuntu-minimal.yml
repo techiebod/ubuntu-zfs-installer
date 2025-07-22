@@ -1,0 +1,33 @@
+---
+# Example configuration for Ubuntu server with minimal services
+# Copy this to your config/host_vars/<hostname>.yml file
+
+# Basic system configuration
+base_hostname: ubuntu-server
+
+# Network configuration (example with single interface)
+network_config:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: true
+
+# System users to create
+system_users:
+  - name: admin
+    password_hash: "{{ secrets.users.admin.password_hash }}"
+    uid: 1000
+    group: admin
+    groups: ["adm", "sudo"]
+    shell: /bin/bash
+    home: /home/admin
+    create_home: true
+
+# Additional packages
+extra_packages:
+  - curl
+  - wget
+  - vim
+  - htop
+  - tree

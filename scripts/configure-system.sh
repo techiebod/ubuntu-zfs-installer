@@ -31,6 +31,8 @@ OPTIONS:
     -l, --limit PATTERN     Limit to specific hosts
     -c, --check             Run in check mode (dry-run)
     -v, --verbose           Enable verbose output
+    --dry-run               Show commands without executing (alias for --check)
+    --debug                 Enable debug output
     -h, --help              Show this help message
 
 COMMON TAG EXAMPLES:
@@ -63,7 +65,7 @@ EOF
 
 # Function to log messages
 log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >&2
+    echo "$*" >&2
 }
 
 # Parse command line arguments
@@ -91,6 +93,15 @@ while [[ $# -gt 0 ]]; do
             ;;
         -v|--verbose)
             VERBOSE=true
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            CHECK_MODE=true  # dry-run implies check mode for Ansible
+            shift
+            ;;
+        --debug)
+            DEBUG=true
             shift
             ;;
         -h|--help)
