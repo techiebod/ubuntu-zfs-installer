@@ -144,18 +144,6 @@ if [[ ! -f "$ansible_dir/$INVENTORY" ]]; then
     exit 1
 fi
 
-# Load user configuration from config/user.env
-USER_ENV="$script_dir/../config/user.env"
-if [[ -f "$USER_ENV" ]]; then
-    log "Loading user configuration from $USER_ENV"
-    # Export variables from user.env so Ansible can access them
-    set -a  # automatically export all variables
-    source "$USER_ENV"
-    set +a  # stop automatically exporting
-    log "Loaded: USERNAME=$USERNAME, TIMEZONE=$TIMEZONE, LOCALE=$LOCALE, HOSTNAME=$HOSTNAME"
-else
-    log "WARNING: $USER_ENV not found, using defaults"
-fi
 
 # Prepare configuration for container
 log "Preparing configuration for systemd-nspawn container..."
@@ -176,9 +164,6 @@ if [[ -L "group_vars" ]]; then
     ln -s ./config/group_vars group_vars
 fi
 
-if [[ -f "$USER_ENV" ]]; then
-    cp "$USER_ENV" "$BASE_IMAGE_PATH/opt/ansible-config/"
-fi
 
 # Build the ansible-playbook command
 ANSIBLE_CMD="ansible-playbook"
@@ -218,7 +203,7 @@ NSPAWN_CMD+="export LANG=C.UTF-8 && "
 NSPAWN_CMD+="export LANGUAGE=C.UTF-8 && "
 NSPAWN_CMD+="export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && "
 NSPAWN_CMD+="cd /opt/ansible-config && "
-NSPAWN_CMD+="if [[ -f user.env ]]; then set -a; source user.env; set +a; fi && "
+NSPAWN_CMD+=""
 NSPAWN_CMD+="if ! command -v ansible-playbook >/dev/null 2>&1; then "
 NSPAWN_CMD+="echo 'Installing Ansible...' && "
 NSPAWN_CMD+="echo 'deb http://archive.ubuntu.com/ubuntu plucky main restricted universe multiverse' > /etc/apt/sources.list && "
