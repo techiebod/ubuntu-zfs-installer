@@ -92,6 +92,69 @@ sudo ./scripts/create-zfs-datasets.sh --mount-varlog plucky
 sudo ./scripts/configure-system.sh --verbose --limit myserver /var/tmp/zfs-builds/plucky
 ```
 
+## 📸 ZFS Snapshots & Change Tracking
+
+### Automated Build Snapshots
+
+The system can create ZFS snapshots at each major build stage for easy rollback:
+
+```bash
+# Build with automatic snapshots at each stage
+sudo ./scripts/build-new-root.sh --snapshots --cleanup --codename plucky myserver blackbox
+```
+
+**Snapshot Stages Created:**
+- `datasets-created` - After ZFS dataset creation
+- `base-os` - After mmdebstrap base OS installation  
+- `varlog-mounted` - After varlog dataset mounting
+- `ansible-complete` - After full Ansible configuration
+
+### Snapshot Naming Convention
+
+Snapshots follow the pattern: `build-stage-{stage}-{timestamp}`
+
+Example: `zroot/ROOT/plucky@build-stage-base-os-20250723-143022`
+
+### Snapshot Management
+
+```bash
+# List all build snapshots
+sudo ./scripts/zfs-snapshot-manager.sh list zroot/ROOT/plucky
+
+# Create manual snapshot
+sudo ./scripts/zfs-snapshot-manager.sh create zroot/ROOT/plucky custom-stage
+
+# Rollback to specific stage
+sudo ./scripts/zfs-snapshot-manager.sh rollback zroot/ROOT/plucky zroot/ROOT/plucky@build-stage-base-os-20250723-143022
+
+# Clean up old snapshots (keeps latest 5)
+sudo ./scripts/zfs-snapshot-manager.sh cleanup zroot/ROOT/plucky base-os
+```
+
+### Etckeeper Integration
+
+All `/etc` changes are automatically tracked in git with meaningful commit messages:
+
+- **Automatic tracking** of all package installations
+- **Ansible integration** with context-aware commits
+- **No backup files** - git provides complete change history
+- **Role-specific commits** showing exactly what each Ansible role changed
+
+```bash
+# View configuration change history
+sudo chroot /var/tmp/zfs-builds/plucky git -C /etc log --oneline
+
+# See what files were changed in last commit
+sudo chroot /var/tmp/zfs-builds/plucky git -C /etc show --name-only
+```
+
+**Example commit messages:**
+```
+Configure fstab for blackbox
+Applied base role - system configuration updated
+committing changes in /etc made by apt install docker-ce
+```
+
 ## ⚙️ Configuration
 
 ### Host Configuration
@@ -197,6 +260,8 @@ All scripts support consistent flags:
 --verbose      # Enable verbose output
 --dry-run      # Show commands without executing
 --debug        # Enable debug output
+--snapshots    # Create ZFS snapshots at build stages (build-new-root.sh only)
+--cleanup      # Remove existing build datasets before starting
 --help         # Show help message
 ```
 
@@ -309,26 +374,52 @@ Secrets are encrypted using Mozilla [sops](https://github.com/mozilla/sops):
 - **Mount point validation** prevents conflicts
 - **Boot environment isolation** ensures system stability
 
+### Multi-Layer Recovery
+
+- **ZFS Snapshots** - Filesystem-level rollback to any build stage
+- **Etckeeper Git History** - Configuration-level change tracking and rollback
+- **Build Stage Isolation** - Each stage can be independently recovered
+- **Automatic Cleanup** - Old snapshots automatically removed (keeps latest 5)
+
 ### Build Validation
 
 - **Online release validation** using Ubuntu APIs
 - **Distribution compatibility checking**
 - **Mount point safety verification**
 - **Proper cleanup on failure**
+- **Dry-run support** for safe testing
 
 ## 📚 Examples
 
 ### Build Multiple Environments
 
 ```bash
-# Build LTS version
-sudo ./scripts/build-new-root.sh --cleanup --codename noble server-lts server-lts
+# Build LTS version with snapshots
+sudo ./scripts/build-new-root.sh --snapshots --cleanup --codename noble server-lts server-lts
 
-# Build latest version  
-sudo ./scripts/build-new-root.sh --cleanup --codename plucky server-latest server-latest
+# Build latest version with full debugging
+sudo ./scripts/build-new-root.sh --snapshots --cleanup --verbose --debug --codename plucky server-latest server-latest
 
 # Build Debian alternative
 sudo ./scripts/build-new-root.sh --cleanup --distribution debian --codename bookworm debian-server debian-server
+```
+
+### Snapshot Workflow
+
+```bash
+# Build with snapshots enabled
+sudo ./scripts/build-new-root.sh --snapshots --cleanup --codename plucky test-build myserver
+
+# Later: rollback to base OS if needed
+sudo ./scripts/zfs-snapshot-manager.sh list zroot/ROOT/plucky
+sudo ./scripts/zfs-snapshot-manager.sh rollback zroot/ROOT/plucky zroot/ROOT/plucky@build-stage-base-os-20250723-143022
+
+# Continue from base OS state
+sudo ./scripts/create-zfs-datasets.sh --mount-varlog plucky  
+sudo ./scripts/configure-system.sh --limit myserver /var/tmp/zfs-builds/plucky
+
+# Create new snapshot after manual changes
+sudo ./scripts/zfs-snapshot-manager.sh create zroot/ROOT/plucky manual-changes
 ```
 
 ### Configuration Tags
@@ -364,22 +455,35 @@ sudo ./scripts/configure-system.sh --limit server-name /var/tmp/zfs-builds/pluck
 # List boot environments
 sudo ./scripts/create-zfs-datasets.sh --list
 
+# List all snapshots for a build
+sudo ./scripts/zfs-snapshot-manager.sh list zroot/ROOT/plucky
+
 # Rollback to previous environment
 sudo zfs set mountpoint=/ zroot/ROOT/noble
 sudo zpool set bootfs=zroot/ROOT/noble zroot
 sudo reboot
+
+# Rollback to specific build stage
+sudo ./scripts/zfs-snapshot-manager.sh rollback zroot/ROOT/plucky zroot/ROOT/plucky@build-stage-base-os-20250723-143022
+
+# View configuration change history
+sudo chroot /var/tmp/zfs-builds/plucky git -C /etc log --oneline
+
+# Rollback specific file changes
+sudo chroot /var/tmp/zfs-builds/plucky git -C /etc checkout HEAD~1 -- fstab
 ```
 
 ## 🏆 Why This Approach?
 
-- **🔒 Safe Testing** - Test system changes in isolated boot environments
-- **⚡ Fast Rollback** - Instant rollback to known-good configurations
-- **🎯 Reproducible** - Consistent builds using declarative configuration
-- **🧹 Clean Separation** - Separate concerns: ZFS, base OS, configuration
-- **🔧 Maintainable** - Modular scripts with shared functionality
-- **📈 Scalable** - Easy to manage multiple systems and configurations
+- **🔒 Safe Testing** - Test system changes in isolated boot environments with automatic snapshots
+- **⚡ Multi-Level Rollback** - Filesystem snapshots + git history provide granular recovery options
+- **🎯 Reproducible** - Consistent builds using declarative configuration with full audit trails
+- **🧹 Clean Separation** - Separate concerns: ZFS, base OS, configuration tracking
+- **🔧 Maintainable** - Modular scripts with shared functionality and comprehensive change tracking  
+- **📈 Scalable** - Easy to manage multiple systems and configurations with automated cleanup
+- **🔍 Auditable** - Complete change history through etckeeper + ZFS snapshots
 
-This system provides enterprise-grade boot environment management with the simplicity of a single command.
+This system provides enterprise-grade boot environment management with professional change tracking and the simplicity of a single command.
 
 ---
 

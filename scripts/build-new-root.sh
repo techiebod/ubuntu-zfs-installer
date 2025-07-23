@@ -22,6 +22,7 @@ POOL_NAME="${DEFAULT_POOL_NAME}"
 ANSIBLE_TAGS=""
 ANSIBLE_LIMIT=""
 CLEANUP=false
+CREATE_SNAPSHOTS=false
 
 # Function to show usage
 show_help() {
@@ -45,6 +46,7 @@ OPTIONS:
     -t, --tags TAGS         Ansible tags to run (comma-separated)
     -l, --limit PATTERN     Ansible limit pattern (default: HOSTNAME)
     --cleanup               Remove existing build with same name
+    --snapshots             Create ZFS snapshots at each build stage
     --verbose               Enable verbose output
     --dry-run               Show commands without executing
     --debug                 Enable debug output
@@ -124,6 +126,36 @@ check_prerequisites() {
     log "Prerequisites check passed"
 }
 
+# Function to create ZFS snapshot at build stage
+create_stage_snapshot() {
+    local stage_name="$1"
+    local dataset="$POOL_NAME/ROOT/$CODENAME"
+    
+    if [[ "$CREATE_SNAPSHOTS" != true ]]; then
+        return 0
+    fi
+    
+    log "Creating ZFS snapshot for stage: $stage_name"
+    
+    local snapshot_cmd="$script_dir/zfs-snapshot-manager.sh create"
+    
+    if [[ "$VERBOSE" == true ]]; then
+        snapshot_cmd+=" --verbose"
+    fi
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        snapshot_cmd+=" --dry-run"
+    fi
+    
+    if [[ "$DEBUG" == true ]]; then
+        snapshot_cmd+=" --debug"
+    fi
+    
+    snapshot_cmd+=" $dataset $stage_name"
+    
+    run_cmd $snapshot_cmd
+}
+
 # Function to create build environment
 create_build_env() {
     # If cleanup is requested, first remove existing datasets
@@ -169,6 +201,9 @@ create_build_env() {
     
     log "Creating ZFS datasets..."
     run_cmd $cmd
+    
+    # Create snapshot after dataset creation
+    create_stage_snapshot "datasets-created"
 }
 
 # Function to create base system
@@ -212,6 +247,9 @@ create_base_system() {
     
     log "Installing base OS image..."
     run_cmd $cmd
+    
+    # Create snapshot after base OS installation
+    create_stage_snapshot "base-os"
 }
 
 # Function to mount varlog after base OS creation
@@ -235,6 +273,9 @@ mount_varlog() {
     
     log "Mounting varlog dataset..."
     run_cmd $cmd
+    
+    # Create snapshot after varlog mount
+    create_stage_snapshot "varlog-mounted"
 }
 
 # Function to configure system
@@ -275,6 +316,9 @@ configure_system() {
     
     log "Configuring system with Ansible..."
     run_cmd $cmd
+    
+    # Create snapshot after Ansible configuration
+    create_stage_snapshot "ansible-complete"
 }
 
 # Function to show completion summary
@@ -339,6 +383,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --cleanup)
             CLEANUP=true
+            shift
+            ;;
+        --snapshots)
+            CREATE_SNAPSHOTS=true
             shift
             ;;
         --verbose)

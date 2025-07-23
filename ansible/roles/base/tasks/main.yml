@@ -64,6 +64,9 @@
     group: root
     mode: '0644'
   tags: fstab
+  notify: commit etckeeper changes
+  vars:
+    etckeeper_commit_message: "Configure fstab for {{ inventory_hostname }}"
 
 - name: Configure timezone
   timezone:

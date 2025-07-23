@@ -26,3 +26,14 @@
     state: restarted
   failed_when: false  # Don't fail in container environments
   when: ansible_service_mgr == "systemd"
+
+# Enhanced etckeeper integration handlers
+- name: commit etckeeper changes
+  command: etckeeper commit "{{ etckeeper_commit_message | default('Ansible configuration changes') }}"
+  ignore_errors: yes
+  when: etckeeper_auto_commit | default(true)
+
+- name: commit etckeeper with role context
+  command: etckeeper commit "Applied {{ ansible_role_name }} role - {{ etckeeper_commit_message | default('configuration updated') }}"
+  ignore_errors: yes
+  when: etckeeper_auto_commit | default(true)
