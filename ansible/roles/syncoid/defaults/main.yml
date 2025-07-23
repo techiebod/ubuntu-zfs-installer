@@ -1,0 +1,47 @@
+---
+# Default syncoid configuration
+
+# Enable syncoid replication (set to true to enable)
+syncoid_enable: false
+
+# Syncoid execution schedule (systemd timer format)
+syncoid_schedule: "daily"
+
+# Syncoid options
+syncoid_options:
+  preserve_recordsize: true
+  recursive: true
+  no_sync_snap: true
+  create_bookmark: true
+  mbuffer_size: "1G"
+
+# SSH configuration
+syncoid_ssh_key_path: "/root/.ssh/syncoid"
+# syncoid_ssh_private_key: "{{ secrets.ssh_keys.syncoid_private_key }}"  # Set in host_vars
+
+# SSH security options
+syncoid_ssh_strict_host_checking: "accept-new"  # Options: yes, no, accept-new
+syncoid_ssh_known_hosts_file: "/root/.ssh/known_hosts"
+syncoid_populate_known_hosts: true  # Automatically add remote hosts to known_hosts
+
+# Remote backup destinations
+# syncoid_remote_hosts:
+#   - name: "backup-server"
+#     hostname: "backup.example.com"
+#     user: "syncoid"
+#     port: 22
+
+# ZFS datasets to replicate
+# syncoid_replications:
+#   - source: "zroot"
+#     destination: "syncoid@backup-server:backup/sync/zroot"
+#   - source: "media"
+#     destination: "syncoid@backup-server:backup/sync/media"
+
+# Service execution settings
+syncoid_service_settings:
+  nice: 19
+  io_scheduling_class: "best-effort"
+  io_scheduling_priority: 5
+  wants: "network-online.target"
+  after: "network-online.target"

@@ -1,0 +1,14 @@
+[Unit]
+Description=syncoid {{ syncoid_replications | map(attribute='source') | join(' & ') }} to remote backup
+Wants={{ syncoid_service_settings.wants }}
+After={{ syncoid_service_settings.after }}
+
+[Service]
+Type=oneshot
+Nice={{ syncoid_service_settings.nice }}
+StandardOutput=journal
+IOSchedulingClass={{ syncoid_service_settings.io_scheduling_class }}
+IOSchedulingPriority={{ syncoid_service_settings.io_scheduling_priority }}
+SyslogIdentifier=syncoid
+ExecStart=/bin/bash -c "{% for replication in syncoid_replications %}{% if not loop.first %} ; \{% endif %}
+         syncoid{% for option, value in syncoid_options.items() %}{% if value %} --{{ option | replace('_', '-') }}{% if value != true %}={{ value }}{% endif %}{% endif %}{% endfor %} --sshkey {{ syncoid_ssh_key_path }} {{ replication.source }} {{ replication.destination }}{% endfor %}"

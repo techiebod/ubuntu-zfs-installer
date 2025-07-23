@@ -1,0 +1,7 @@
+---
+# Sanoid handlers
+
+- name: restart sanoid
+  systemd:
+    name: sanoid.timer
+    state: restarted

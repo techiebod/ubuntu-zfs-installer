@@ -1,0 +1,82 @@
+---
+# Syncoid role for ZFS replication
+
+- name: Install syncoid dependencies
+  package:
+    name:
+      - mbuffer
+      - pv
+      - lzop
+    state: present
+  tags: [syncoid]
+
+- name: Create syncoid SSH key directory
+  file:
+    path: /root/.ssh
+    state: directory
+    mode: '0700'
+    owner: root
+    group: root
+  tags: [syncoid]
+
+- name: Configure syncoid SSH key
+  copy:
+    content: "{{ syncoid_ssh_private_key }}"
+    dest: /root/.ssh/syncoid
+    mode: '0600'
+    owner: root
+    group: root
+  when: syncoid_ssh_private_key is defined
+  notify: restart syncoid timer
+  tags: [syncoid]
+
+- name: Configure SSH config for syncoid
+  template:
+    src: ssh_config.j2
+    dest: /root/.ssh/config
+    mode: '0600'
+    owner: root
+    group: root
+  when: syncoid_remote_hosts is defined
+  notify: restart syncoid timer
+  tags: [syncoid]
+
+- name: Add remote hosts to known_hosts
+  shell: |
+    ssh-keyscan -H -p {{ item.port | default(22) }} {{ item.hostname }} >> /root/.ssh/known_hosts
+  with_items: "{{ syncoid_remote_hosts }}"
+  when: 
+    - syncoid_remote_hosts is defined
+    - syncoid_populate_known_hosts | default(true)
+  changed_when: false
+  failed_when: false
+  tags: [syncoid]
+
+- name: Create syncoid systemd service
+  template:
+    src: sync-ZFS.service.j2
+    dest: /etc/systemd/system/sync-ZFS.service
+    mode: '0644'
+  notify:
+    - reload systemd
+    - restart syncoid timer
+  tags: [syncoid]
+
+- name: Create syncoid systemd timer
+  template:
+    src: sync-ZFS.timer.j2
+    dest: /etc/systemd/system/sync-ZFS.timer
+    mode: '0644'
+  notify:
+    - reload systemd
+    - restart syncoid timer
+  tags: [syncoid]
+
+- name: Enable and start syncoid timer
+  systemd:
+    name: sync-ZFS.timer
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  when: syncoid_enable | default(false)
+  tags: [syncoid]

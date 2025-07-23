@@ -24,6 +24,12 @@
     - role: etckeeper
       tags: ['etckeeper', 'git']
     
+    - role: sanoid
+      tags: ['sanoid', 'snapshots']
+    
+    - role: syncoid
+      tags: ['syncoid', 'replication']
+    
     - role: network
       tags: ['network']
     

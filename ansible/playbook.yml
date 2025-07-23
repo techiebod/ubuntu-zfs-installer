@@ -3,8 +3,17 @@
   connection: local
   become: true
   roles:
-    - base
-    - etckeeper
-    - network
-    - geerlingguy.docker
-    - samba
+    - role: base
+      tags: [base]
+    - role: etckeeper
+      tags: [etckeeper]
+    - role: sanoid
+      tags: [sanoid]
+    - role: syncoid
+      tags: [syncoid]
+    - role: network
+      tags: [network]
+    - role: geerlingguy.docker
+      tags: [docker]
+    - role: samba
+      tags: [samba]

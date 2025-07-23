@@ -76,11 +76,74 @@ docker_daemon_options:
     tag: "Container: {{ '{{' }}.Name{{ '}}' }}"
   data-root: "/var/tmp/docker"
 
+# Sanoid configuration for this host
+sanoid_datasets:
+  # Boot environments - weekly snapshots only
+  - path: "zroot/ROOT"
+    template: weekly
+    process_children_only: yes
+    recursive: yes
+    
+  # User data - daily snapshots with longer retention
+  - path: "zroot/home"
+    template: daily
+    recursive: yes
+    
+  # Application data - daily snapshots
+  - path: "zroot/fs"
+    template: daily
+    recursive: yes
+    
+  # Media storage - daily snapshots
+  - path: "media"
+    template: daily
+    recursive: yes
+
+# Sanoid templates (matching current config)
+sanoid_templates:
+  daily:
+    frequently: 0
+    hourly: 0
+    daily: 30
+    monthly: 6
+    yearly: 1
+    autosnap: yes
+    autoprune: yes
+  weekly:
+    frequently: 0
+    hourly: 0
+    daily: 0
+    weekly: 8
+    monthly: 0
+    yearly: 0
+    autosnap: yes
+    autoprune: yes
+
+# Sanoid exclusions
+sanoid_exclusions:
+  - path: "zroot/fs/TimeMachine"
+
+# Syncoid configuration
+syncoid_enable: true
+syncoid_schedule: "daily"
+syncoid_ssh_private_key: "{{ secrets.ssh_keys.syncoid_private_key }}"
+
+syncoid_remote_hosts:
+  - name: "babybox"
+    hostname: "babybox.private"
+    user: "syncoid"
+    port: 22
+
+syncoid_replications:
+  - source: "zroot"
+    destination: "syncoid@babybox.private:backup/sync/zroot"
+  - source: "media"
+    destination: "syncoid@babybox.private:backup/sync/media"
+
 # Additional packages for this server (if any)
 extra_packages:
   - ncdu  # Disk usage analyzer
   - prometheus-node-exporter
-  - sanoid
   - unattended-upgrades
   - avahi-daemon
   - avahi-utils

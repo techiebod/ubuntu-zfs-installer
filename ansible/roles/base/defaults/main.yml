@@ -42,7 +42,6 @@ base_packages:
   - openssh-server     # Remote access
   - rsync              # File transfers, ZFS sends
   - smartmontools      # Disk monitoring
-  - sanoid             # ZFS snapshot management
   - mbuffer            # For faster ZFS sends
   - nvme-cli           # NVMe tools (common on modern systems)
   - hdparm             # Disk utilities

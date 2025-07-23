@@ -131,6 +131,21 @@ sudo ./scripts/zfs-snapshot-manager.sh rollback zroot/ROOT/plucky zroot/ROOT/plu
 sudo ./scripts/zfs-snapshot-manager.sh cleanup zroot/ROOT/plucky base-os
 ```
 
+### Offsite Replication, Bookmarks, and syncoid
+
+For offsite or remote backup, this system supports common ZFS replication workflows using tools like [syncoid](https://github.com/jimsalterjrs/sanoid), [zrepl](https://zrepl.github.io/), or native `zfs send/receive` with bookmarks.
+
+- **Local snapshot retention** is managed by sanoid or your chosen snapshot tool (e.g., keep 30 daily snapshots).
+- **Bookmarks** are automatically left behind for each snapshot sent to a remote system. These bookmarks are lightweight pointers that remain even after the original snapshot is deleted locally.
+- **Purpose of bookmarks:** Bookmarks allow replication tools to resume incremental replication from the last sent snapshot, even if the local snapshot has been pruned. They also serve as restore points for offsite recovery.
+- **Automation:** You can automate replication using systemd timers, cron jobs, or other scheduling tools as appropriate for your environment.
+
+**Best practice:**
+
+> Local snapshots are pruned according to your retention policy, but bookmarks persist for all snapshots sent offsite. This enables efficient, reliable incremental replication and offsite restore, without cluttering your local system with old snapshots.
+
+This is a recommended and widely used approach for ZFS backup and disaster recovery.
+
 ### Etckeeper Integration
 
 All `/etc` changes are automatically tracked in git with meaningful commit messages:

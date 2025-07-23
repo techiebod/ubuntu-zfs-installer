@@ -1,0 +1,9 @@
+[Unit]
+Description=Timer for running syncoid (zfs send/recv) to remote backup
+
+[Timer]
+OnCalendar={{ syncoid_schedule }}
+Unit=sync-ZFS.service
+
+[Install]
+WantedBy=timers.target

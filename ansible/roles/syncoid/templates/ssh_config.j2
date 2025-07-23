@@ -1,0 +1,11 @@
+# SSH configuration for syncoid replication
+{% for host in syncoid_remote_hosts %}
+Host {{ host.name }}
+    HostName {{ host.hostname }}
+    User {{ host.user }}
+    Port {{ host.port | default(22) }}
+    IdentityFile {{ syncoid_ssh_key_path }}
+    StrictHostKeyChecking {{ syncoid_ssh_strict_host_checking | default('accept-new') }}
+    UserKnownHostsFile {{ syncoid_ssh_known_hosts_file | default('/root/.ssh/known_hosts') }}
+
+{% endfor %}

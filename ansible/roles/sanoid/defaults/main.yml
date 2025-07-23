@@ -1,0 +1,72 @@
+---
+# Default sanoid configuration
+
+# ZFS pool name for sanoid management
+sanoid_pool_name: "{{ zfs_pool_name | default('zroot') }}"
+
+# Template definitions for different snapshot schedules
+sanoid_templates:
+  # Conservative template for boot environments (ROOT datasets)
+  boot_env:
+    frequently: 0
+    hourly: 0
+    daily: 0
+    weekly: 8      # Keep 8 weeks of boot environment snapshots
+    monthly: 0
+    yearly: 0
+    autosnap: yes
+    autoprune: yes
+
+  # Standard template for user data
+  user_data:
+    frequently: 0
+    hourly: 0
+    daily: 30      # Keep 30 days
+    monthly: 6     # Keep 6 months
+    yearly: 1      # Keep 1 year
+    autosnap: yes
+    autoprune: yes
+
+  # High-frequency template for critical data
+  critical:
+    frequently: 0
+    hourly: 24     # Keep 24 hours
+    daily: 30      # Keep 30 days
+    monthly: 12    # Keep 12 months
+    yearly: 2      # Keep 2 years
+    autosnap: yes
+    autoprune: yes
+
+  # No snapshots template (for exclusions)
+  none:
+    autosnap: no
+    autoprune: no
+    monitor: no
+
+# Dataset configurations
+sanoid_datasets:
+  # Boot environments - weekly snapshots only
+  - path: "{{ sanoid_pool_name }}/ROOT"
+    template: boot_env
+    process_children_only: yes
+    recursive: yes
+    
+  # User data - daily snapshots with longer retention
+  - path: "{{ sanoid_pool_name }}/home"
+    template: user_data
+    recursive: yes
+    
+  # Application data - daily snapshots
+  - path: "{{ sanoid_pool_name }}/fs"
+    template: user_data
+    recursive: yes
+
+# Dataset exclusions (datasets that should not be snapshotted)
+sanoid_exclusions:
+  # TimeMachine backups don't need snapshots (they're already backups)
+  - path: "{{ sanoid_pool_name }}/fs/TimeMachine"
+    template: none
+    
+  # Docker volumes can be excluded if using proper backup strategies
+  - path: "{{ sanoid_pool_name }}/fs/docker"
+    template: none
