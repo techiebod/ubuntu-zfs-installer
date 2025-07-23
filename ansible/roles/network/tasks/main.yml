@@ -17,7 +17,6 @@
           {{ network_config | to_nice_yaml | indent(2, true) }}
         dest: /etc/netplan/01-netcfg.yaml
         mode: '0600'
-        backup: true
       when: network_config is defined
       notify: apply netplan
 
@@ -26,7 +25,6 @@
         src: 01-netcfg.yaml
         dest: /etc/netplan/01-netcfg.yaml
         mode: '0600'
-        backup: true
       when: network_config is not defined
       notify: apply netplan
 
@@ -44,7 +42,6 @@
           {{ ip }} {{ host }}
           {% endfor %}
         marker: "# {mark} ANSIBLE MANAGED NETWORK HOSTS"
-        backup: true
       when: network_hosts is defined or private_network_hosts is defined
 
   tags: ['network']

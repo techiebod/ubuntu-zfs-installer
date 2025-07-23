@@ -1,14 +1,12 @@
-- name: Install etckeeper
-  apt:
-    name: etckeeper
-    state: present
-
-- name: Init etckeeper repo
-  command: etckeeper init
-  args:
-    creates: /etc/.git
-
-- name: Auto-commit etc changes
+---
+- name: Configure automatic etckeeper commits
   copy:
     dest: /etc/apt/apt.conf.d/99etckeeper
     content: 'DPkg::Post-Invoke {"etckeeper commit installed || true";};'
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Commit etckeeper configuration
+  command: etckeeper commit "Configure automatic commits"
+  ignore_errors: yes

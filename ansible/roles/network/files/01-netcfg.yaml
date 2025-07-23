@@ -2,10 +2,16 @@ network:
   version: 2
   renderer: networkd
   ethernets:
-    eno1:
+    # Default: enable DHCP on first ethernet interface
+    # This should work for most systems with a single interface
+    # For specific configurations, define network_config in host_vars
+    eth0:
       dhcp4: true
-    # Additional interfaces should be configured in host_vars
-    # Example:
-    # eno2:
-    #   dhcp4: false
-    #   addresses: [10.0.0.x/24]
+      optional: true
+    # Common alternative interface names (one will typically match)
+    ens3:
+      dhcp4: true  
+      optional: true
+    enp0s3:
+      dhcp4: true
+      optional: true

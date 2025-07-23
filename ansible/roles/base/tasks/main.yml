@@ -1,4 +1,21 @@
 ---
+- name: Install etckeeper early for change tracking
+  apt:
+    name: etckeeper
+    state: present
+    update_cache: yes
+
+- name: Initialize etckeeper repository
+  command: etckeeper init
+  args:
+    creates: /etc/.git
+
+- name: Make initial etckeeper commit
+  command: etckeeper commit "Initial commit before configuration"
+  args:
+    creates: /etc/.git/refs/heads/master
+  ignore_errors: yes
+
 - name: Update package cache
   apt:
     update_cache: yes
@@ -38,6 +55,15 @@
     group: root
     mode: '0644'
   tags: hostname
+
+- name: Configure /etc/fstab from template
+  template:
+    src: fstab.j2
+    dest: /etc/fstab
+    owner: root
+    group: root
+    mode: '0644'
+  tags: fstab
 
 - name: Configure timezone
   timezone:

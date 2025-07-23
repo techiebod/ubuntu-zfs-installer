@@ -38,13 +38,13 @@ base_packages:
   - tzdata
   - util-linux-extra  # Required for hwclock/timezone
   - git  # For etckeeper
-  - zsh  # Required for henry's shell
+  - zsh  # Modern shell (user preference)
   - openssh-server     # Remote access
   - rsync              # File transfers, ZFS sends
   - smartmontools      # Disk monitoring
   - sanoid             # ZFS snapshot management
   - mbuffer            # For faster ZFS sends
-  - nvme-cli           # NVMe tools
+  - nvme-cli           # NVMe tools (common on modern systems)
   - hdparm             # Disk utilities
   - tmux               # Terminal multiplexer
 

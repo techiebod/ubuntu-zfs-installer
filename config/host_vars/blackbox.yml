@@ -2,6 +2,46 @@
 # Configuration for main ZFS server
 base_hostname: blackbox
 
+# Blackbox-specific fstab configuration
+fstab_entries:
+  # High-performance NVMe storage for /mnt
+  - device: "/dev/disk/by-uuid/3be3ed5d-92e1-4c89-a911-8d183a27c2e6"
+    mount_point: "/mnt"
+    fstype: "ext4"
+    options: "defaults,nobarrier,noatime,data=writeback,commit=60,auto_da_alloc,dioread_nolock"
+    dump: 0
+    pass: 1
+  
+  # MD RAID0 array for fast temporary storage
+  - device: "/dev/md/raid0"
+    mount_point: "/var/tmp"
+    fstype: "ext4"
+    options: "defaults,nobarrier,noatime,data=writeback,commit=60,auto_da_alloc,dioread_nolock"
+    dump: 0
+    pass: 1
+
+  # Dual EFI partitions for redundancy (with nofail)
+  - device: "/dev/disk/by-uuid/4E8B-8E33"
+    mount_point: "/boot/efi"
+    fstype: "vfat"
+    options: "defaults,nofail"
+    dump: 0
+    pass: 1
+  - device: "/dev/disk/by-uuid/A896-BF43"
+    mount_point: "/boot/efi2"
+    fstype: "vfat"
+    options: "defaults,nofail"
+    dump: 0
+    pass: 1
+
+  # Swap partition
+  - device: "UUID=b759639a-ac2a-4295-ab01-9b1c36f92f05"
+    mount_point: "none"
+    fstype: "swap"
+    options: "sw"
+    dump: 0
+    pass: 0
+
 # Network configuration specific to blackbox
 network_config:
   version: 2
@@ -44,6 +84,8 @@ extra_packages:
   - unattended-upgrades
   - avahi-daemon
   - avahi-utils
+  - mdadm  # RAID management
+  - smartmontools  # Disk monitoring
 
 # System users to create
 system_users:
