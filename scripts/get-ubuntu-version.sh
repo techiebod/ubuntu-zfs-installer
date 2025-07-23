@@ -86,6 +86,37 @@ validate_version() {
     fi
 }
 
+# Function to list all Ubuntu versions
+list_all_versions() {
+    echo "Available Ubuntu versions:"
+    echo
+    
+    # Get all versions from Launchpad API
+    local versions
+    versions=$(curl -s "https://api.launchpad.net/1.0/ubuntu/series" 2>/dev/null | \
+               jq -r '.entries[] | "\(.version):\(.name):\(.status)"' 2>/dev/null | \
+               sort -V)
+    
+    if [[ -z "$versions" ]]; then
+        echo "Error: Could not retrieve Ubuntu versions from API" >&2
+        return 1
+    fi
+    
+    printf "%-8s %-12s %s\n" "VERSION" "CODENAME" "STATUS"
+    printf "%-8s %-12s %s\n" "-------" "--------" "------"
+    
+    while IFS=: read -r version codename status; do
+        [[ -n "$version" ]] && printf "%-8s %-12s %s\n" "$version" "$codename" "$status"
+    done <<< "$versions"
+    
+    echo
+    echo "Common statuses:"
+    echo "  Current Stable Release - Latest released version"
+    echo "  Supported             - Officially supported"
+    echo "  Active Development    - Under development"
+    echo "  Obsolete             - No longer supported"
+}
+
 # Function to show usage
 show_usage() {
     cat << EOF
@@ -96,6 +127,7 @@ Get Ubuntu release version and codename information.
 OPTIONS:
     --codename, -c          Show codename instead of version number
     --validate, -v          Validate that a version exists (use with VERSION)
+    --list-all, -l          List all available Ubuntu versions and codenames
     --help, -h              Show this help message
 
 VERSION:
@@ -115,9 +147,13 @@ EXAMPLES:
     # Validate a version exists
     $0 --validate 24.04
 
+    # List all available versions
+    $0 --list-all
+
     # Check if specific version exists (exit code 0=exists, 1=not found)
     if $0 --validate 24.04; then
         echo "Ubuntu 24.04 exists"
+    fi
     fi
 
 EXIT CODES:
@@ -135,6 +171,7 @@ EOF
 main() {
     local show_codename=false
     local validate_mode=false
+    local list_all=false
     local target_version=""
     
     # Parse command line arguments
@@ -146,6 +183,10 @@ main() {
                 ;;
             --validate|-v)
                 validate_mode=true
+                shift
+                ;;
+            --list-all|-l)
+                list_all=true
                 shift
                 ;;
             --help|-h)
@@ -168,6 +209,12 @@ main() {
                 ;;
         esac
     done
+    
+    # Handle list-all mode
+    if [[ "$list_all" == true ]]; then
+        list_all_versions
+        exit $?
+    fi
     
     # Check for required dependencies
     if ! command -v curl >/dev/null 2>&1; then
