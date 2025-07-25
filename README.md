@@ -39,10 +39,14 @@ This system creates **ZFS Boot Environments** - complete, independent Ubuntu ins
 ### Key Components
 
 - **`build-new-root.sh`** — **Main orchestrator** that coordinates the complete build process
-- **`create-zfs-datasets.sh`** — ZFS dataset and mount point management with conditional varlog mounting
+- **`manage-root-datasets.sh`** — ZFS dataset and mount point management with conditional varlog mounting
 - **`install-root-os.sh`** — Base OS creation using mmdebstrap (supports Ubuntu, Debian, and derivatives)
 - **`configure-root-os.sh`** — System configuration using Ansible in systemd-nspawn containers
+- **`manage-root-containers.sh`** — Container lifecycle management for build and runtime environments
+- **`manage-root-snapshots.sh`** — ZFS snapshot creation, listing, rollback, and cleanup
+- **`manage-build-status.sh`** — Build status tracking and resumability management
 - **`get-ubuntu-version.sh`** — Ubuntu release validation and version/codename mapping utility
+- **`get-ubuntu-packages.sh`** — Ubuntu package list generation with blacklist filtering
 - **`lib/common.sh`** — Shared functionality and smart distribution validation
 
 ### ZFS Dataset Structure
@@ -65,7 +69,7 @@ zroot/ROOT/plucky/varlog → /var/tmp/zfs-builds/plucky/var/log
 Build a complete Ubuntu 25.04 system with hostname "myserver":
 
 ```bash
-sudo ./scripts/build-new-root.sh --cleanup --verbose --codename plucky myserver myserver
+sudo ./scripts/build-new-root.sh --verbose --codename plucky plucky-build myserver
 ```
 
 This automatically:
@@ -80,20 +84,20 @@ For more control, run each step manually:
 
 ```bash
 # 1. Create ZFS datasets and mount points
-sudo ./scripts/create-zfs-datasets.sh --cleanup --verbose plucky
+sudo ./scripts/manage-root-datasets.sh --verbose create plucky-build
 
 # 2. Build base Ubuntu system (with conditional varlog mounting)
-sudo ./scripts/install-root-os.sh --verbose --codename plucky /var/tmp/zfs-builds/plucky
+sudo ./scripts/install-root-os.sh --verbose --codename plucky --pool zroot plucky-build
 
 # 3. Mount varlog after base system creation
-sudo ./scripts/create-zfs-datasets.sh --mount-varlog plucky
+sudo ./scripts/manage-root-datasets.sh --verbose mount-varlog plucky-build
 
 # 4. Configure with Ansible
-sudo ./scripts/configure-root-os.sh --tags docker myserver /var/tmp/zfs-builds/plucky
+sudo ./scripts/configure-root-os.sh --tags docker --pool zroot plucky-build myserver
 
-sudo ./scripts/configure-root-os.sh --tags base myserver /var/tmp/zfs-builds/plucky
+sudo ./scripts/configure-root-os.sh --tags base --pool zroot plucky-build myserver
 
-sudo ./scripts/configure-root-os.sh --tags base,network myserver /var/tmp/zfs-builds/plucky
+sudo ./scripts/configure-root-os.sh --tags base,network --pool zroot plucky-build myserver
 ```
 
 ## 📸 ZFS Snapshots & Change Tracking
@@ -104,38 +108,40 @@ The system creates ZFS snapshots at each major build stage by default for easy r
 
 ```bash
 # Build with automatic snapshots (enabled by default)
-sudo ./scripts/build-new-root.sh --cleanup --codename plucky myserver blackbox
+sudo ./scripts/build-new-root.sh --verbose --codename plucky plucky-build myserver
 
 # Disable snapshots if not needed
-sudo ./scripts/build-new-root.sh --no-snapshots --cleanup --codename plucky myserver blackbox
+sudo ./scripts/build-new-root.sh --no-snapshots --verbose --codename plucky plucky-build myserver
 ```
 
 **Snapshot Stages Created:**
-- `datasets-created` - After ZFS dataset creation
-- `base-os` - After mmdebstrap base OS installation  
-- `varlog-mounted` - After varlog dataset mounting
-- `ansible-complete` - After full Ansible configuration
+- `1-datasets-created` - After ZFS dataset creation
+- `2-os-installed` - After mmdebstrap base OS installation  
+- `3-varlog-mounted` - After varlog dataset mounting
+- `4-container-created` - After container creation and preparation
+- `5-ansible-configured` - After full Ansible configuration
+- `6-completed` - After build completion and cleanup
 
 ### Snapshot Naming Convention
 
 Snapshots follow the pattern: `build-stage-{stage}-{timestamp}`
 
-Example: `zroot/ROOT/plucky@build-stage-base-os-20250723-143022`
+Example: `zroot/ROOT/plucky@build-stage-2-os-installed-20250723-143022`
 
 ### Snapshot Management
 
 ```bash
 # List all build snapshots
-sudo ./scripts/zfs-snapshot-manager.sh list zroot/ROOT/plucky
+sudo ./scripts/manage-root-snapshots.sh list plucky-build
 
 # Create manual snapshot
-sudo ./scripts/zfs-snapshot-manager.sh create zroot/ROOT/plucky custom-stage
+sudo ./scripts/manage-root-snapshots.sh create plucky-build custom-stage
 
 # Rollback to specific stage
-sudo ./scripts/zfs-snapshot-manager.sh rollback zroot/ROOT/plucky zroot/ROOT/plucky@build-stage-base-os-20250723-143022
+sudo ./scripts/manage-root-snapshots.sh rollback plucky-build build-stage-1-datasets-created-20250723-143022
 
 # Clean up old snapshots (keeps latest 5)
-sudo ./scripts/zfs-snapshot-manager.sh cleanup zroot/ROOT/plucky base-os
+sudo ./scripts/manage-root-snapshots.sh cleanup plucky-build datasets-created
 ```
 
 ### Offsite Replication, Bookmarks, and syncoid
@@ -164,10 +170,10 @@ All `/etc` changes are automatically tracked in git with meaningful commit messa
 
 ```bash
 # View configuration change history
-sudo chroot /var/tmp/zfs-builds/plucky git -C /etc log --oneline
+sudo chroot /var/tmp/zfs-builds/plucky-build git -C /etc log --oneline
 
 # See what files were changed in last commit
-sudo chroot /var/tmp/zfs-builds/plucky git -C /etc show --name-only
+sudo chroot /var/tmp/zfs-builds/plucky-build git -C /etc show --name-only
 ```
 
 **Example commit messages:**
@@ -258,7 +264,7 @@ sudo ./scripts/build-new-root.sh --distribution fedora --version 39 --codename r
 List existing boot environments:
 
 ```bash
-sudo ./scripts/create-zfs-datasets.sh --list
+sudo ./scripts/manage-root-datasets.sh list
 ```
 
 Output example:
@@ -341,7 +347,7 @@ The build process is now **resumable** with automatic status tracking:
    - Creates minimal, ZFS-optimized base system
    - Status: `os-installed`
 
-3. **Varlog Mounting** (`create-zfs-datasets.sh --mount-varlog`)
+3. **Varlog Mounting** (`manage-root-datasets.sh mount-varlog`)
    - Mounts varlog dataset after base system creation
    - Preserves existing logs as `/var/log.old`
    - Status: `varlog-mounted`
@@ -369,14 +375,14 @@ If a build fails or is interrupted, simply re-run the same command:
 
 ```bash
 # This will resume from where it left off
-sudo ./scripts/build-new-root.sh --verbose plucky myserver
+sudo ./scripts/build-new-root.sh --verbose plucky-build myserver
 
 # Force restart from beginning
-sudo ./scripts/build-new-root.sh --restart --verbose plucky myserver
+sudo ./scripts/build-new-root.sh --restart --verbose plucky-build myserver
 
 # Check current build status
 sudo ./scripts/manage-build-status.sh list
-sudo ./scripts/manage-build-status.sh get plucky
+sudo ./scripts/manage-build-status.sh get plucky-build
 ```
 
 **Build Status Tracking:**
@@ -391,8 +397,8 @@ When ready to use the new boot environment:
 
 ```bash
 # Set as boot default
-sudo zfs set mountpoint=/ zroot/ROOT/plucky
-sudo zpool set bootfs=zroot/ROOT/plucky zroot
+sudo zfs set mountpoint=/ zroot/ROOT/plucky-build
+sudo zpool set bootfs=zroot/ROOT/plucky-build zroot
 
 # Reboot and select from GRUB menu
 sudo reboot
@@ -405,15 +411,18 @@ sudo reboot
 ```
 ├── scripts/                    # Main executables
 │   ├── build-new-root.sh      # Main orchestrator with resumable builds
-│   ├── create-zfs-datasets.sh # ZFS management
+│   ├── manage-root-datasets.sh # ZFS dataset management
 │   ├── install-root-os.sh     # Base OS creation
-│   ├── configure-root-os.sh  # Ansible configuration
+│   ├── configure-root-os.sh   # Ansible configuration
 │   ├── manage-root-containers.sh # Container lifecycle management
+│   ├── manage-root-snapshots.sh # ZFS snapshot management
 │   ├── manage-build-status.sh # Build status and resumability
-│   └── get-ubuntu-version.sh  # Ubuntu release utility
+│   ├── get-ubuntu-version.sh  # Ubuntu release utility
+│   └── get-ubuntu-packages.sh # Ubuntu package list generation
 ├── lib/
 │   └── common.sh              # Shared functionality
 ├── config/
+│   ├── global.conf            # System-wide configuration
 │   ├── host_vars/             # Per-machine configuration
 │   ├── user.env               # User preferences
 │   └── secrets.sops.yaml      # Encrypted secrets
@@ -451,7 +460,7 @@ Secrets are encrypted using Mozilla [sops](https://github.com/mozilla/sops):
 
 1. **Install tools**: `apt install age sops`
 2. **Generate key**: `age-keygen -o ~/.config/sops/age/keys.txt`
-3. **Setup sops**: `./scripts/create-sops-config.sh`
+3. **Setup sops**: Create `.sops.yaml` configuration file in project root
 4. **Edit secrets**: `sops config/secrets.sops.yaml`
 
 ## 🛡️ Safety Features
@@ -484,31 +493,31 @@ Secrets are encrypted using Mozilla [sops](https://github.com/mozilla/sops):
 
 ```bash
 # Build LTS version (snapshots enabled by default)
-sudo ./scripts/build-new-root.sh --cleanup --codename noble server-lts server-lts
+sudo ./scripts/build-new-root.sh --verbose --codename noble noble-server server-lts
 
 # Build latest version with full debugging
-sudo ./scripts/build-new-root.sh --cleanup --verbose --debug --codename plucky server-latest server-latest
+sudo ./scripts/build-new-root.sh --verbose --debug --codename plucky plucky-server server-latest
 
 # Build Debian alternative without snapshots
-sudo ./scripts/build-new-root.sh --no-snapshots --cleanup --distribution debian --codename bookworm debian-server debian-server
+sudo ./scripts/build-new-root.sh --no-snapshots --verbose --distribution debian --codename bookworm debian-server debian-server
 ```
 
 ### Snapshot Workflow
 
 ```bash
 # Build with snapshots enabled
-sudo ./scripts/build-new-root.sh --snapshots --cleanup --codename plucky test-build myserver
+sudo ./scripts/build-new-root.sh --snapshots --verbose --codename plucky test-build myserver
 
 # Later: rollback to base OS if needed
-sudo ./scripts/zfs-snapshot-manager.sh list zroot/ROOT/plucky
-sudo ./scripts/zfs-snapshot-manager.sh rollback zroot/ROOT/plucky zroot/ROOT/plucky@build-stage-base-os-20250723-143022
+sudo ./scripts/manage-root-snapshots.sh list test-build
+sudo ./scripts/manage-root-snapshots.sh rollback test-build build-stage-2-os-installed-20250723-143022
 
 # Continue from base OS state
-sudo ./scripts/create-zfs-datasets.sh --mount-varlog plucky  
-sudo ./scripts/configure-root-os.sh --limit myserver /var/tmp/zfs-builds/plucky
+sudo ./scripts/manage-root-datasets.sh mount-varlog test-build  
+sudo ./scripts/configure-root-os.sh --limit myserver --pool zroot test-build myserver
 
 # Create new snapshot after manual changes
-sudo ./scripts/zfs-snapshot-manager.sh create zroot/ROOT/plucky manual-changes
+sudo ./scripts/manage-root-snapshots.sh create test-build manual-changes
 ```
 
 ### Resumable Build Workflow
@@ -566,13 +575,13 @@ Run only specific configuration tasks:
 
 ```bash
 # Only configure Docker
-sudo ./scripts/configure-system.sh --tags docker myserver /var/tmp/zfs-builds/plucky
+sudo ./scripts/configure-root-os.sh --tags docker --pool zroot plucky-build myserver
 
 # Only configure base system (timezone, locale, hostname)  
-sudo ./scripts/configure-system.sh --tags base myserver /var/tmp/zfs-builds/plucky
+sudo ./scripts/configure-root-os.sh --tags base --pool zroot plucky-build myserver
 
 # Multiple tags
-sudo ./scripts/configure-system.sh --tags base,network myserver /var/tmp/zfs-builds/plucky
+sudo ./scripts/configure-root-os.sh --tags base,network --pool zroot plucky-build myserver
 ```
 
 ### Configuration Updates
@@ -580,21 +589,23 @@ sudo ./scripts/configure-system.sh --tags base,network myserver /var/tmp/zfs-bui
 Apply Ansible changes to existing system:
 
 ```bash
-# Update running system
-sudo ./scripts/realign.sh
+# Update running system (requires creating container for live system)
+sudo ./scripts/manage-root-containers.sh create --install-packages ansible,python3-apt current-system
+sudo ./scripts/manage-root-containers.sh start current-system  
+sudo ./scripts/configure-root-os.sh --limit server-name --pool zroot current-system server-name
 
 # Update specific boot environment
-sudo ./scripts/configure-root-os.sh --limit server-name /var/tmp/zfs-builds/plucky
+sudo ./scripts/configure-root-os.sh --limit server-name --pool zroot plucky-build server-name
 ```
 
 ### Recovery and Rollback
 
 ```bash
 # List boot environments
-sudo ./scripts/create-zfs-datasets.sh --list
+sudo ./scripts/manage-root-datasets.sh list
 
 # List all snapshots for a build
-sudo ./scripts/zfs-snapshot-manager.sh list zroot/ROOT/plucky
+sudo ./scripts/manage-root-snapshots.sh list plucky-build
 
 # Rollback to previous environment
 sudo zfs set mountpoint=/ zroot/ROOT/noble
@@ -602,13 +613,13 @@ sudo zpool set bootfs=zroot/ROOT/noble zroot
 sudo reboot
 
 # Rollback to specific build stage
-sudo ./scripts/zfs-snapshot-manager.sh rollback zroot/ROOT/plucky zroot/ROOT/plucky@build-stage-base-os-20250723-143022
+sudo ./scripts/manage-root-snapshots.sh rollback plucky-build build-stage-2-os-installed-20250723-143022
 
 # View configuration change history
-sudo chroot /var/tmp/zfs-builds/plucky git -C /etc log --oneline
+sudo chroot /var/tmp/zfs-builds/plucky-build git -C /etc log --oneline
 
 # Rollback specific file changes
-sudo chroot /var/tmp/zfs-builds/plucky git -C /etc checkout HEAD~1 -- fstab
+sudo chroot /var/tmp/zfs-builds/plucky-build git -C /etc checkout HEAD~1 -- fstab
 ```
 
 ## 🏆 Why This Approach?
