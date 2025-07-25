@@ -72,11 +72,17 @@
     - restart syncoid timer
   tags: [syncoid]
 
+- name: Check if systemd is running as PID 1
+  command: ps -p 1 -o comm=
+  register: syncoid_pid1_check
+  changed_when: false
+  failed_when: false
+
 - name: Enable and start syncoid timer
   systemd:
     name: sync-ZFS.timer
     enabled: yes
     state: started
     daemon_reload: yes
-  when: syncoid_enable | default(false)
+  when: (syncoid_enable | default(false)) and (syncoid_pid1_check.stdout == "systemd")
   tags: [syncoid]

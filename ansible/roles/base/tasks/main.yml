@@ -1,4 +1,6 @@
 ---
+# Base system configuration
+
 - name: Install etckeeper early for change tracking
   apt:
     name: etckeeper

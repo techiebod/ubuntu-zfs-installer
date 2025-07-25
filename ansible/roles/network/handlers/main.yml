@@ -1,6 +1,14 @@
 ---
 # Network configuration handlers
 
+- name: check if systemd is running as PID 1
+  command: ps -p 1 -o comm=
+  register: network_pid1_check
+  changed_when: false
+  failed_when: false
+  listen: apply netplan
+
 - name: apply netplan
   command: netplan apply
+  when: network_pid1_check.stdout == "systemd"
   listen: apply netplan

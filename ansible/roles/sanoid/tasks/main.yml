@@ -22,9 +22,16 @@
   notify: restart sanoid
   tags: [sanoid]
 
+- name: Check if systemd is running as PID 1
+  command: ps -p 1 -o comm=
+  register: pid1_check
+  changed_when: false
+  failed_when: false
+
 - name: Reload systemd daemon to recognize new services
-  systemd:
-    daemon_reload: yes
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: pid1_check.stdout == "systemd"
   tags: [sanoid]
 
 - name: Enable and start sanoid timer
@@ -32,4 +39,5 @@
     name: sanoid.timer
     enabled: yes
     state: started
+  when: pid1_check.stdout == "systemd"
   tags: [sanoid]

@@ -1,120 +1,54 @@
 #!/bin/bash
-
-# Script to get Ubuntu release version and codename information
-# Usage: ./get-ubuntu-version.sh [OPTIONS] [VERSION]
-# 
-# This script can:
-# - Get the latest Ubuntu version (default)
-# - Get the codename for the latest version (--codename)
-# - Get the codename for a specific version (--codename VERSION)
-# - Validate a version exists (--validate VERSION)
+#
+# Command-line wrapper to get Ubuntu release information.
+#
+# This script acts as a CLI for the distribution resolution functions
+# in the common library. It allows for standalone querying of Ubuntu
+# version and codename information.
 
 set -euo pipefail
 
 # Source common library
+# The library provides the core logic for version resolution.
 script_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+# shellcheck source=../lib/common.sh
 source "$script_dir/../lib/common.sh"
 
-# Function to get codename for a given version
-get_codename() {
-    local version="$1"
-    
-    # Use Launchpad API with jq to get codename
-    local codename
-    codename=$(curl -s "https://api.launchpad.net/1.0/ubuntu/series" 2>/dev/null | \
-               jq -r ".entries[] | select(.version == \"$version\") | .name" 2>/dev/null)
-    
-    if [[ -n "$codename" && "$codename" != "null" ]]; then
-        echo "$codename"
-        return 0
-    fi
-    
-    # If codename lookup fails, return empty
-    echo ""
-    return 1
-}
+# This script defines functions that are not part of the common library
+# as they are specific to the CLI wrapper (e.g. listing all versions).
 
-# Function to get latest Ubuntu version
-get_latest_ubuntu() {
-    local version=""
-    
-    # Method 1: Ubuntu Cloud Images (most up-to-date for releases)
-    version=$(curl -s "https://cloud-images.ubuntu.com/releases/" 2>/dev/null | \
-              grep -o 'href="[0-9][0-9]\.[0-9][0-9]/' | \
-              grep -o '[0-9][0-9]\.[0-9][0-9]' | \
-              sort -V | tail -1)
-    
-    if [[ -n "$version" ]]; then
-        echo "$version"
-        return 0
-    fi
-    
-    # Method 2: Launchpad API fallback (current stable release)
-    version=$(curl -s "https://api.launchpad.net/1.0/ubuntu/series" 2>/dev/null | \
-              jq -r '.entries[] | select(.status == "Current Stable Release") | .version' 2>/dev/null)
-    
-    if [[ -n "$version" && "$version" != "null" ]]; then
-        echo "$version"
-        return 0
-    fi
-    
-    # Method 3: Latest supported version from Launchpad
-    version=$(curl -s "https://api.launchpad.net/1.0/ubuntu/series" 2>/dev/null | \
-              jq -r '.entries[] | select(.status == "Supported") | .version' 2>/dev/null | \
-              sort -V | tail -1)
-    
-    if [[ -n "$version" && "$version" != "null" ]]; then
-        echo "$version"
-        return 0
-    fi
-    
-    # If all methods fail
-    echo "Error: Could not determine latest Ubuntu version" >&2
-    return 1
-}
-
-# Function to validate if a version exists
-validate_version() {
-    local version="$1"
-    local codename
-    codename=$(get_codename "$version")
-    
-    if [[ -n "$codename" ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-# Function to list all Ubuntu versions
+# Function to list all Ubuntu versions from the Launchpad API
+# This is kept separate from the common library as it's a specific
+# feature of this CLI tool for user-facing output.
 list_all_versions() {
-    echo "Available Ubuntu versions:"
-    echo
-    
+    require_command "curl"
+    require_command "jq"
+
+    log_info "Fetching all available Ubuntu versions from Launchpad API..."
+
     # Get all versions from Launchpad API
     local versions
     versions=$(curl -s "https://api.launchpad.net/1.0/ubuntu/series" 2>/dev/null | \
                jq -r '.entries[] | "\(.version):\(.name):\(.status)"' 2>/dev/null | \
                sort -V)
-    
+
     if [[ -z "$versions" ]]; then
-        echo "Error: Could not retrieve Ubuntu versions from API" >&2
-        return 1
+        die "Could not retrieve Ubuntu versions from API."
     fi
-    
-    printf "%-8s %-12s %s\n" "VERSION" "CODENAME" "STATUS"
-    printf "%-8s %-12s %s\n" "-------" "--------" "------"
-    
+
+    printf "%-10s %-15s %s\n" "VERSION" "CODENAME" "STATUS"
+    printf "%-10s %-15s %s\n" "----------" "---------------" "------"
+
     while IFS=: read -r version codename status; do
-        [[ -n "$version" ]] && printf "%-8s %-12s %s\n" "$version" "$codename" "$status"
+        [[ -n "$version" ]] && printf "%-10s %-15s %s\n" "$version" "$codename" "$status"
     done <<< "$versions"
-    
+
     echo
-    echo "Common statuses:"
-    echo "  Current Stable Release - Latest released version"
-    echo "  Supported             - Officially supported"
-    echo "  Active Development    - Under development"
-    echo "  Obsolete             - No longer supported"
+    log_info "Common statuses:"
+    log_info "  Current Stable Release - Latest released version"
+    log_info "  Supported              - Officially supported"
+    log_info "  Active Development     - Under development"
+    log_info "  Obsolete               - No longer supported"
 }
 
 # Function to show usage
@@ -122,66 +56,76 @@ show_usage() {
     cat << EOF
 Usage: $0 [OPTIONS] [VERSION]
 
-Get Ubuntu release version and codename information.
+Command-line wrapper to get Ubuntu release information using the project's
+common library.
 
 OPTIONS:
-    --codename, -c          Show codename instead of version number
-    --validate, -v          Validate that a version exists (use with VERSION)
-    --list-all, -l          List all available Ubuntu versions and codenames
-    --help, -h              Show this help message
+    --codename, -c          Show codename instead of version number.
+    --version, -v           Show version number instead of codename.
+    --validate              Validate that a version or codename exists.
+    --list-all, -l          List all available Ubuntu versions and codenames.
+    --help, -h              Show this help message.
 
-VERSION:
-    Specific Ubuntu version (e.g., 24.04, 25.04)
-    If not provided, returns information about the latest release
+[VERSION]:
+    An optional specific Ubuntu version (e.g., 24.04) or codename (e.g., noble).
+    If not provided, the script defaults to the latest stable release.
 
 EXAMPLES:
-    # Get latest Ubuntu version
+    # Get latest Ubuntu version number
     $0
+    $0 --version
 
     # Get latest Ubuntu codename
     $0 --codename
 
-    # Get codename for specific version
+    # Get codename for a specific version
     $0 --codename 24.04
 
-    # Validate a version exists
+    # Get version for a specific codename
+    $0 --version noble
+
+    # Validate a version exists (returns exit code 0 if found)
     $0 --validate 24.04
+
+    # Validate a codename exists
+    $0 --validate noble
 
     # List all available versions
     $0 --list-all
 
-    # Check if specific version exists (exit code 0=exists, 1=not found)
-    if $0 --validate 24.04; then
-        echo "Ubuntu 24.04 exists"
-    fi
-    fi
-
 EXIT CODES:
     0  Success
-    1  Version not found or network error
+    1  Not found, or network/dependency error
     2  Invalid arguments
-
-DEPENDENCIES:
-    - curl (for API access)
-    - jq (for JSON parsing) - install with: apt install jq
 EOF
 }
 
 # Main script logic
 main() {
-    local show_codename=false
+    local mode="version" # Default mode
     local validate_mode=false
     local list_all=false
-    local target_version=""
-    
+    local target_input=""
+
+    # Override default logging to be less verbose for CLI use
+    _log() { echo "$2"; }
+    log_info() { echo "$@"; }
+    log_error() { echo "Error: $@" >&2; }
+    log_warn() { echo "Warning: $@" >&2; }
+    log_debug() { return 0; } # Disable debug logging for CLI
+
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
             --codename|-c)
-                show_codename=true
+                mode="codename"
                 shift
                 ;;
-            --validate|-v)
+            --version|-v)
+                mode="version"
+                shift
+                ;;
+            --validate)
                 validate_mode=true
                 shift
                 ;;
@@ -194,73 +138,81 @@ main() {
                 exit 0
                 ;;
             -*)
-                echo "Error: Unknown option '$1'" >&2
-                echo "Use --help for usage information" >&2
+                log_error "Unknown option '$1'"
+                log_error "Use --help for usage information"
                 exit 2
                 ;;
             *)
-                if [[ -z "$target_version" ]]; then
-                    target_version="$1"
+                if [[ -z "$target_input" ]]; then
+                    target_input="$1"
                 else
-                    echo "Error: Multiple versions specified" >&2
+                    log_error "Multiple versions/codenames specified ('$target_input', '$1')."
                     exit 2
                 fi
                 shift
                 ;;
         esac
     done
-    
-    # Handle list-all mode
+
+    # Ensure curl and jq are available if we need them
+    if [[ "$list_all" == true || "$validate_mode" == true || -n "$target_input" ]]; then
+        require_command "curl"
+        require_command "jq"
+    fi
+
+    # Handle --list-all mode
     if [[ "$list_all" == true ]]; then
         list_all_versions
         exit $?
     fi
-    
-    # Check for required dependencies
-    if ! command -v curl >/dev/null 2>&1; then
-        echo "Error: curl is required but not installed" >&2
-        exit 1
-    fi
-    
-    if ! command -v jq >/dev/null 2>&1; then
-        echo "Error: jq is required but not installed" >&2
-        echo "Install with: apt install jq" >&2
-        exit 1
-    fi
-    
-    # Determine target version
-    if [[ -z "$target_version" ]]; then
-        # No version specified, get latest
-        target_version=$(get_latest_ubuntu)
-        if [[ $? -ne 0 ]]; then
+
+    local result=""
+    if [[ -z "$target_input" ]]; then
+        # No target specified, get the latest
+        result=$(_get_latest_ubuntu_version)
+        if [[ -z "$result" ]]; then
+            log_error "Could not determine the latest Ubuntu version."
             exit 1
         fi
-    fi
-    
-    # Handle validation mode
-    if [[ "$validate_mode" == true ]]; then
-        if validate_version "$target_version"; then
-            exit 0
-        else
-            echo "Error: Ubuntu version $target_version not found" >&2
-            exit 1
-        fi
-    fi
-    
-    # Handle output based on mode
-    if [[ "$show_codename" == true ]]; then
-        local codename
-        codename=$(get_codename "$target_version")
-        if [[ -n "$codename" ]]; then
-            echo "$codename"
-        else
-            echo "Error: Could not get codename for Ubuntu $target_version" >&2
-            exit 1
+        if [[ "$mode" == "codename" ]]; then
+            result=$(_get_ubuntu_codename_for_version "$result")
         fi
     else
-        echo "$target_version"
+        # Target was specified, determine if it's a version or codename
+        # We can cheat by checking if it contains a dot.
+        if [[ "$target_input" == *.* ]]; then # Looks like a version
+            if [[ "$validate_mode" == true ]]; then
+                _get_ubuntu_codename_for_version "$target_input" >/dev/null || exit 1
+                exit 0
+            fi
+            if [[ "$mode" == "version" ]]; then
+                result="$target_input"
+            else
+                result=$(_get_ubuntu_codename_for_version "$target_input")
+            fi
+        else # Looks like a codename
+            if [[ "$validate_mode" == true ]]; then
+                _get_ubuntu_version_for_codename "$target_input" >/dev/null || exit 1
+                exit 0
+            fi
+            if [[ "$mode" == "codename" ]]; then
+                result="$target_input"
+            else
+                result=$(_get_ubuntu_version_for_codename "$target_input")
+            fi
+        fi
     fi
+
+    if [[ -z "$result" ]]; then
+        log_error "Could not resolve '$target_input'."
+        exit 1
+    fi
+
+    echo "$result"
+    exit 0
 }
 
-# Run main function with all arguments
+# Run main function with all arguments, but disable errexit for the main
+# function to allow for more graceful error handling and custom exit codes.
+set +o errexit
 main "$@"

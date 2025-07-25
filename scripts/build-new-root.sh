@@ -1,477 +1,442 @@
 #!/bin/bash
-
+#
 # Multi-Distribution ZFS Root Builder - Orchestrates the complete build process
-# Usage: ./build-new-root.sh [OPTIONS] BUILD_NAME HOSTNAME
+#
+# This script serves as the main entry point for creating a new ZFS-based
+# root filesystem. It calls other specialized scripts to handle each stage
+# of the process, from dataset creation to system configuration.
 
-set -euo pipefail
-
-# Get script directory for sourcing
+# --- Script Setup ---
+# Source the common library to get access to standardized functions
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Source common library
+# shellcheck source=../lib/common.sh
 source "$script_dir/../lib/common.sh"
 
-# Default values
+# --- Script-specific Default values ---
+# These are defaults for this script, which can be overridden by command-line args.
 BUILD_NAME=""
 HOSTNAME=""
 DISTRIBUTION="${DEFAULT_DISTRIBUTION}"
 VERSION=""
 CODENAME=""
 ARCH="${DEFAULT_ARCH}"
+INSTALL_PROFILE="${DEFAULT_INSTALL_PROFILE:-minimal}"
 POOL_NAME="${DEFAULT_POOL_NAME}"
 ANSIBLE_TAGS=""
 ANSIBLE_LIMIT=""
-CLEANUP=false
-CREATE_SNAPSHOTS=false
+# --- Configuration ---
+DRY_RUN=false
+VERBOSE=false
+DEBUG=false
+CREATE_SNAPSHOTS=true
+FORCE_RESTART=false
 
-# Function to show usage
-show_help() {
+# --- Usage Information ---
+show_usage() {
     cat << EOF
 Usage: $0 [OPTIONS] BUILD_NAME HOSTNAME
 
-Complete multi-distribution ZFS root builder - orchestrates the entire process from
-ZFS dataset creation through base OS installation to Ansible configuration.
+Orchestrates the entire process of building a new ZFS root filesystem.
+It handles ZFS dataset creation, base OS installation, and Ansible configuration.
 
 ARGUMENTS:
-    BUILD_NAME              Name for this build (e.g., ubuntu-25.04, debian-12, server-build)
-    HOSTNAME                Target hostname (must have corresponding host_vars file)
+  BUILD_NAME              A unique name for this build (e.g., ubuntu-25.04, server-build).
+  HOSTNAME                The target hostname. A corresponding Ansible host_vars file
+                          (config/host_vars/HOSTNAME.yml) must exist.
 
 OPTIONS:
-    -d, --distribution DIST Distribution to build (default: ubuntu)
-    -v, --version VERSION   Distribution version (e.g., 25.04, 24.04, 12, 11)
-    -c, --codename CODENAME Distribution codename (e.g., plucky, noble, bookworm)
-                           Note: For Ubuntu/Debian, specify either --version OR --codename
-    -a, --arch ARCH         Target architecture (default: amd64)
-    -p, --pool POOL         ZFS pool to use (default: zroot)
-    -t, --tags TAGS         Ansible tags to run (comma-separated)
-    -l, --limit PATTERN     Ansible limit pattern (default: HOSTNAME)
-    --cleanup               Remove existing build with same name
-    --snapshots             Create ZFS snapshots at each build stage
-    --verbose               Enable verbose output
-    --dry-run               Show commands without executing
-    --debug                 Enable debug output
-    -h, --help              Show this help message
+  -d, --distribution DIST Distribution to build (default: ${DEFAULT_DISTRIBUTION}).
+  -v, --version VERSION   Distribution version (e.g., 25.04, 12).
+  -c, --codename CODENAME Distribution codename (e.g., noble, bookworm).
+                          For Ubuntu, you can specify either version or codename.
+  -a, --arch ARCH         Target architecture (default: ${DEFAULT_ARCH}).
+  -p, --pool POOL         ZFS pool to use (default: ${DEFAULT_POOL_NAME}).
+      --profile PROFILE   Package installation profile (minimal, standard, full; default: ${DEFAULT_INSTALL_PROFILE:-minimal}).
+  -t, --tags TAGS         Comma-separated list of Ansible tags to run.
+  -l, --limit PATTERN     Ansible limit pattern (default: HOSTNAME).
+      --snapshots         Create ZFS snapshots after major build stages (default: enabled).
+      --no-snapshots      Disable ZFS snapshot creation for faster builds.
+      --restart           Force restart from beginning, ignoring existing build status.
+      --verbose           Enable verbose output, showing all command outputs.
+      --dry-run           Show all commands that would be run without executing them.
+      --debug             Enable detailed debug logging.
+  -h, --help              Show this help message.
 
 EXAMPLES:
-    # Build Ubuntu 25.04 system for blackbox
-    $0 --version 25.04 ubuntu-25.04 blackbox
+  # Build an Ubuntu 24.04 system for host 'blackbox'
+  $0 --version 24.04 ubuntu-noble blackbox
 
-    # Build with codename and cleanup existing
-    $0 --cleanup --codename noble --verbose ubuntu-server myserver
+  # Build an Ubuntu server with standard packages (ubuntu-server equivalent)
+  $0 --version 24.04 --profile standard ubuntu-server blackbox
 
-    # Build only base system (no Ansible configuration)
-    $0 --version 24.04 --tags never ubuntu-minimal minimal-host
+  # Build a Debian 12 system, cleaning up any previous build with the same name
+    # Build a Debian system
+  $0 --distribution debian --version 12 debian-bookworm my-server
 
-    # Build Debian 12 system
-    $0 --distribution debian --version 12 debian-12 myhost
-
-    # Dry run to see what would happen
-    $0 --dry-run --verbose --codename plucky ubuntu-test testhost
-
-PROCESS:
-    1. Create ZFS datasets and mount points
-    2. Install base OS image with mmdebstrap  
-    3. Configure system with Ansible
-    4. Report final mount points and next steps
+  # Perform a dry run to see all the steps for a new build
+  $0 --dry-run --codename noble ubuntu-test test-host
 
 REQUIREMENTS:
-    - config/host_vars/HOSTNAME.yml must exist
-    - ZFS pool must exist and be accessible
-    - Docker must be installed for base OS installation
-    - Sufficient space in ZFS pool for system image
-
-OUTPUT LOCATIONS:
-    Base system:    /var/tmp/zfs-builds/BUILD_NAME
-    Var/log:        /var/tmp/zfs-builds/BUILD_NAME/var/log
+  - Docker must be installed and running for the OS installation stage.
+  - The target ZFS pool must exist.
+  - An Ansible host variables file must exist at 'config/host_vars/HOSTNAME.yml'.
 EOF
+    exit 0
 }
 
-# Function to check prerequisites
-check_prerequisites() {
-    local hostname="$1"
-    
-    # Check for required scripts
-    local required_scripts=(
-        "create-zfs-datasets.sh"
-        "install-base-os.sh"
-        "configure-system.sh"
-    )
-    
-    for script in "${required_scripts[@]}"; do
-        if [[ ! -x "$script_dir/$script" ]]; then
-            die "Required script not found or not executable: $script_dir/$script"
-        fi
+# --- Argument Parsing ---
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -d|--distribution) DISTRIBUTION="$2"; shift 2 ;;
+            -v|--version) VERSION="$2"; shift 2 ;;
+            -c|--codename) CODENAME="$2"; shift 2 ;;
+            -a|--arch) ARCH="$2"; shift 2 ;;
+            -p|--pool) POOL_NAME="$2"; shift 2 ;;
+            --profile) INSTALL_PROFILE="$2"; shift 2 ;;
+            -t|--tags) ANSIBLE_TAGS="$2"; shift 2 ;;
+            -l|--limit) ANSIBLE_LIMIT="$2"; shift 2 ;;
+            --snapshots) CREATE_SNAPSHOTS=true; shift ;;
+            --no-snapshots) CREATE_SNAPSHOTS=false; shift ;;
+            --restart) FORCE_RESTART=true; shift ;;
+            --verbose) VERBOSE=true; shift ;;
+            --dry-run) DRY_RUN=true; shift ;;
+            --debug) DEBUG=true; shift ;;
+            -h|--help) show_usage ;;
+            -*) die "Unknown option: $1" ;;
+            *)
+                if [[ -z "$BUILD_NAME" ]]; then
+                    BUILD_NAME="$1"
+                elif [[ -z "$HOSTNAME" ]]; then
+                    HOSTNAME="$1"
+                else
+                    die "Too many arguments. Expected BUILD_NAME and HOSTNAME."
+                fi
+                shift
+                ;;
+        esac
     done
-    
-    # Check for host configuration
-    local host_vars_file="$script_dir/../config/host_vars/$hostname.yml"
-    if [[ ! -f "$host_vars_file" ]]; then
-        log_error "Host configuration not found: $host_vars_file"
-        log "Available hosts:"
-        ls -1 "$script_dir/../config/host_vars/"*.yml 2>/dev/null | xargs -I {} basename {} .yml | sed 's/^/  /' || log "  None found"
-        exit 1
-    fi
-    
-    # Check ZFS pool
-    check_zfs_pool "$POOL_NAME"
-    
-    # Check Docker
-    check_docker
-    
-    if ! docker info >/dev/null 2>&1; then
-        log "ERROR: Docker is not running or not accessible"
-        exit 1
-    fi
-    
-    log "Prerequisites check passed"
 }
 
-# Function to create ZFS snapshot at build stage
-create_stage_snapshot() {
-    local stage_name="$1"
-    local dataset="$POOL_NAME/ROOT/$CODENAME"
-    
+# --- Prerequisite Checks ---
+check_prerequisites() {
+    log_info "Performing prerequisite checks..."
+
+    if [[ -z "$BUILD_NAME" || -z "$HOSTNAME" ]]; then
+        show_usage
+        die "Missing required arguments: BUILD_NAME and HOSTNAME."
+    fi
+
+    local host_vars_file
+    host_vars_file="$(dirname "$script_dir")/config/host_vars/${HOSTNAME}.yml"
+    if [[ ! -f "$host_vars_file" ]]; then
+        die "Ansible host_vars file not found for '$HOSTNAME' at '$host_vars_file'."
+    fi
+
+    # Check for required helper scripts in the same directory
+    require_command "$script_dir/manage-root-datasets.sh"
+    require_command "$script_dir/install-root-os.sh"
+    require_command "$script_dir/configure-root-os.sh"
+    if [[ "$CREATE_SNAPSHOTS" == true ]]; then
+        require_command "$script_dir/manage-root-snapshots.sh"
+    fi
+
+    # Check for system dependencies
+    check_zfs_pool "$POOL_NAME"
+    check_docker
+    log_info "All prerequisite checks passed."
+}
+
+# --- Helper to create snapshots ---
+take_snapshot() {
+    local stage="$1"
     if [[ "$CREATE_SNAPSHOTS" != true ]]; then
         return 0
     fi
-    
-    log "Creating ZFS snapshot for stage: $stage_name"
-    
-    local snapshot_cmd="$script_dir/zfs-snapshot-manager.sh create"
-    
-    if [[ "$VERBOSE" == true ]]; then
-        snapshot_cmd+=" --verbose"
-    fi
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        snapshot_cmd+=" --dry-run"
-    fi
-    
-    if [[ "$DEBUG" == true ]]; then
-        snapshot_cmd+=" --debug"
-    fi
-    
-    snapshot_cmd+=" $dataset $stage_name"
-    
-    run_cmd $snapshot_cmd
+
+    log_info "Creating snapshot for stage: $stage"
+    local snapshot_args=(
+        "--pool" "$POOL_NAME"
+        "create"
+        "$BUILD_NAME"
+        "$stage"
+    )
+    [[ "$VERBOSE" == true ]] && snapshot_args+=("--verbose")
+    [[ "$DRY_RUN" == true ]] && snapshot_args+=("--dry-run")
+    [[ "$DEBUG" == true ]] && snapshot_args+=("--debug")
+
+    run_cmd "$script_dir/manage-root-snapshots.sh" "${snapshot_args[@]}"
 }
 
-# Function to create build environment
-create_build_env() {
-    # If cleanup is requested, first remove existing datasets
-    if [[ "$CLEANUP" == true ]]; then
-        local cleanup_cmd="$script_dir/create-zfs-datasets.sh --cleanup"
-        
-        if [[ "$VERBOSE" == true ]]; then
-            cleanup_cmd+=" --verbose"
+# --- Helper to manage build status ---
+set_build_status() {
+    local status="$1"
+    log_debug "Setting build status to: $status"
+    run_cmd "$script_dir/manage-build-status.sh" set "$status" "$BUILD_NAME"
+}
+
+log_build_event() {
+    local message="$1"
+    run_cmd "$script_dir/manage-build-status.sh" log "$BUILD_NAME" "$message"
+}
+
+check_build_status() {
+    "$script_dir/manage-build-status.sh" get "$BUILD_NAME" 2>/dev/null || echo ""
+}
+
+should_run_stage() {
+    local stage="$1"
+    "$script_dir/manage-build-status.sh" should-run "$stage" "$BUILD_NAME" "$FORCE_RESTART" >/dev/null 2>&1
+}
+
+clear_build_status() {
+    run_cmd "$script_dir/manage-build-status.sh" clear "$BUILD_NAME"
+}
+
+# --- Main Build Logic ---
+main() {
+    parse_args "$@"
+    check_prerequisites
+
+    # Define container name used throughout the build process
+    container_name="${BUILD_NAME}"
+
+    # Resolve distribution version and codename
+    resolve_dist_info "$DISTRIBUTION" "$VERSION" "$CODENAME"
+
+    # Set Ansible limit if not provided
+    if [[ -z "$ANSIBLE_LIMIT" ]]; then
+        ANSIBLE_LIMIT="$HOSTNAME"
+    fi
+
+    log_info "Starting build process with the following settings:"
+    log_info "  Build Name:     $BUILD_NAME"
+    log_info "  Target Host:    $HOSTNAME"
+    log_info "  ZFS Pool:       $POOL_NAME"
+    log_info "  Distribution:   $DISTRIBUTION"
+    log_info "  Version:        $DIST_VERSION"
+    log_info "  Codename:       $DIST_CODENAME"
+    log_info "  Architecture:   $ARCH"
+    log_info "  Ansible Tags:   ${ANSIBLE_TAGS:-'(none)'}"
+    log_info "  Ansible Limit:  $ANSIBLE_LIMIT"
+    log_info "  Snapshots:      $CREATE_SNAPSHOTS"
+    log_info "  Force Restart:  $FORCE_RESTART"
+    log_info "  Dry Run:        $DRY_RUN"
+
+    # Log build start
+    log_build_event "Build initiated: $DISTRIBUTION $DIST_VERSION ($ARCH) -> hostname '$HOSTNAME' on pool '$POOL_NAME'"
+
+    # Check current build status
+    local current_status
+    current_status=$(check_build_status)
+    if [[ -n "$current_status" ]]; then
+        log_info "Current build status: $current_status"
+        if [[ "$FORCE_RESTART" == true ]]; then
+            log_info "Force restart requested - clearing build status"
+            clear_build_status
+            current_status=""
         fi
-        
-        if [[ "$DRY_RUN" == true ]]; then
-            cleanup_cmd+=" --dry-run"
-        fi
-        
-        if [[ "$DEBUG" == true ]]; then
-            cleanup_cmd+=" --debug"
-        fi
-        
-        cleanup_cmd+=" --pool $POOL_NAME"
-        cleanup_cmd+=" $CODENAME"
-        
-        log "Removing existing ZFS datasets..."
-        run_cmd $cleanup_cmd
     fi
-    
-    # Now create the datasets (always, whether cleanup was done or not)
-    local cmd="$script_dir/create-zfs-datasets.sh --no-varlog"
-    
-    if [[ "$VERBOSE" == true ]]; then
-        cmd+=" --verbose"
-    fi
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        cmd+=" --dry-run"
-    fi
-    
-    if [[ "$DEBUG" == true ]]; then
-        cmd+=" --debug"
-    fi
-    
-    cmd+=" --pool $POOL_NAME"
-    cmd+=" $CODENAME"
-    
-    log "Creating ZFS datasets..."
-    run_cmd $cmd
-    
-    # Create snapshot after dataset creation
-    create_stage_snapshot "datasets-created"
-}
 
-# Function to create base system
-create_base_system() {
-    local target_dir="/var/tmp/zfs-builds/$CODENAME"
-    local cmd="$script_dir/install-base-os.sh"
-    
-    # Require at least version or codename
-    if [[ -z "$VERSION" ]] && [[ -z "$CODENAME" ]]; then
-        log "ERROR: Either --version or --codename is required for base system creation"
-        exit 1
+    # Set initial status
+    if [[ -z "$current_status" ]]; then
+        set_build_status "started"
     fi
-    
-    cmd+=" --distribution $DISTRIBUTION"
-    
-    if [[ -n "$VERSION" ]]; then
-        cmd+=" --version $VERSION"
-    fi
-    
-    if [[ -n "$CODENAME" ]]; then
-        cmd+=" --codename $CODENAME"
-    fi
-    
-    if [[ "$ARCH" != "amd64" ]]; then
-        cmd+=" --arch $ARCH"
-    fi
-    
-    if [[ "$VERBOSE" == true ]]; then
-        cmd+=" --verbose"
-    fi
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        cmd+=" --dry-run"
-    fi
-    
-    if [[ "$DEBUG" == true ]]; then
-        cmd+=" --debug"
-    fi
-    
-    cmd+=" $target_dir"
-    
-    log "Installing base OS image..."
-    run_cmd $cmd
-    
-    # Create snapshot after base OS installation
-    create_stage_snapshot "base-os"
-}
 
-# Function to mount varlog after base OS creation
-mount_varlog() {
-    local cmd="$script_dir/create-zfs-datasets.sh --mount-varlog"
-    
-    if [[ "$VERBOSE" == true ]]; then
-        cmd+=" --verbose"
-    fi
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        cmd+=" --dry-run"
-    fi
-    
-    if [[ "$DEBUG" == true ]]; then
-        cmd+=" --debug"
-    fi
-    
-    cmd+=" --pool $POOL_NAME"
-    cmd+=" $CODENAME"
-    
-    log "Mounting varlog dataset..."
-    run_cmd $cmd
-    
-    # Create snapshot after varlog mount
-    create_stage_snapshot "varlog-mounted"
-}
+    # --- STAGE 1: Create ZFS Datasets ---
+    if should_run_stage "datasets-created"; then
+        log_info "Stage 1: Creating ZFS root dataset..."
+        log_build_event "Starting Stage 1: Creating ZFS datasets for distribution $DISTRIBUTION $DIST_VERSION"
+        local zfs_script_args=(
+            "--pool" "$POOL_NAME"
+            "create"
+            "$BUILD_NAME"
+        )
+        [[ "$VERBOSE" == true ]] && zfs_script_args+=("--verbose")
+        [[ "$DRY_RUN" == true ]] && zfs_script_args+=("--dry-run")
+        [[ "$DEBUG" == true ]] && zfs_script_args+=("--debug")
 
-# Function to configure system
-configure_system() {
-    local target_dir="/var/tmp/zfs-builds/$CODENAME"
-    local cmd="$script_dir/configure-system.sh"
-    
-    if [[ -n "$ANSIBLE_TAGS" ]]; then
-        cmd+=" --tags $ANSIBLE_TAGS"
-    fi
-    
-    if [[ -n "$ANSIBLE_LIMIT" ]]; then
-        cmd+=" --limit $ANSIBLE_LIMIT"
+        run_cmd "$script_dir/manage-root-datasets.sh" "${zfs_script_args[@]}"
+        set_build_status "datasets-created"
+        log_build_event "Completed Stage 1: ZFS datasets created successfully"
+        take_snapshot "1-datasets-created"
     else
-        # Default to the hostname
-        cmd+=" --limit $HOSTNAME"
+        log_info "Stage 1: Skipping ZFS dataset creation (already completed)"
     fi
-    
-    if [[ "$VERBOSE" == true ]]; then
-        cmd+=" --verbose"
-    fi
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        cmd+=" --dry-run"
-    fi
-    
-    if [[ "$DEBUG" == true ]]; then
-        cmd+=" --debug"
-    fi
-    
-    cmd+=" $target_dir"
-    
-    # Skip configuration if tags is "never" (allows base-only builds)
-    if [[ "$ANSIBLE_TAGS" == "never" ]]; then
-        log "Skipping Ansible configuration (tags=never)"
-        return 0
-    fi
-    
-    log "Configuring system with Ansible..."
-    run_cmd $cmd
-    
-    # Create snapshot after Ansible configuration
-    create_stage_snapshot "ansible-complete"
-}
 
-# Function to show completion summary
-show_completion() {
-    local base_mount="/var/tmp/zfs-builds/$CODENAME"
-    local varlog_mount="/var/tmp/zfs-builds/$CODENAME/var/log"
-    
-    echo
-    log "=== BUILD COMPLETED SUCCESSFULLY ==="
-    echo
-    log "Build name:       $BUILD_NAME"
-    log "Hostname:         $HOSTNAME"
-    log "Distribution:     $DISTRIBUTION"
-    log "Architecture:     $ARCH"
-    echo
-    log "Mount points:"
-    log "  Root:           $base_mount"
-    log "  Var/log:        $varlog_mount"
-    echo
-    log "ZFS datasets created:"
-    log "  zroot/ROOT/$CODENAME        -> $base_mount"
-    log "  zroot/ROOT/$CODENAME/varlog -> $varlog_mount"
-    echo
-    log "Next steps:"
-    log "  1. Test the system: sudo systemd-nspawn --directory=$base_mount"
-    log "  2. Create snapshot: zfs snapshot zroot/ROOT/$CODENAME@ready"
-    log "  3. When ready to deploy: zfs set mountpoint=/ zroot/ROOT/$CODENAME"
-    log "  4. Reboot and select this boot environment from GRUB"
-    echo
-}
-
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -d|--distribution)
-            DISTRIBUTION="$2"
-            shift 2
-            ;;
-        -v|--version)
-            VERSION="$2"
-            shift 2
-            ;;
-        -c|--codename)
-            CODENAME="$2"
-            shift 2
-            ;;
-        -a|--arch)
-            ARCH="$2"
-            shift 2
-            ;;
-        -p|--pool)
-            POOL_NAME="$2"
-            shift 2
-            ;;
-        -t|--tags)
-            ANSIBLE_TAGS="$2"
-            shift 2
-            ;;
-        -l|--limit)
-            ANSIBLE_LIMIT="$2"
-            shift 2
-            ;;
-        --cleanup)
-            CLEANUP=true
-            shift
-            ;;
-        --snapshots)
-            CREATE_SNAPSHOTS=true
-            shift
-            ;;
-        --verbose)
-            VERBOSE=true
-            shift
-            ;;
-        --dry-run)
-            DRY_RUN=true
-            shift
-            ;;
-        --debug)
-            DEBUG=true
-            shift
-            ;;
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        *)
-            # Arguments should be BUILD_NAME and HOSTNAME
-            if [[ -z "$BUILD_NAME" ]]; then
-                BUILD_NAME="$1"
-                shift
-            elif [[ -z "$HOSTNAME" ]]; then
-                HOSTNAME="$1"
-                shift
+    # --- STAGE 2: Install Base OS ---
+    if should_run_stage "os-installed"; then
+        log_info "Stage 2: Installing base operating system..."
+        log_build_event "Starting Stage 2: Installing $DISTRIBUTION $DIST_VERSION base OS on $ARCH architecture"
+        
+        # If we're rerunning Stage 2 (i.e., datasets already exist but OS install failed),
+        # roll back to the clean state from Stage 1 to ensure a fresh start
+        local current_status
+        current_status=$(check_build_status)
+        if [[ "$current_status" == "datasets-created" ]]; then
+            log_info "Rolling back to clean state before OS installation..."
+            # Use the simplified rollback to stage 1 snapshot
+            local rollback_args=(
+                "--pool" "$POOL_NAME"
+                "rollback"
+                "$BUILD_NAME"
+                "build-stage-1-datasets-created"
+            )
+            [[ "$VERBOSE" == true ]] && rollback_args+=("--verbose")
+            [[ "$DRY_RUN" == true ]] && rollback_args+=("--dry-run")
+            [[ "$DEBUG" == true ]] && rollback_args+=("--debug")
+            
+            if run_cmd "$script_dir/manage-root-snapshots.sh" "${rollback_args[@]}"; then
+                log_info "Successfully rolled back to stage 1 snapshot"
             else
-                die "Unknown option $1. Use --help for usage information"
+                log_warn "Failed to rollback to stage 1 snapshot, proceeding with current state"
             fi
-            ;;
-    esac
-done
+        fi
+        
+        local os_install_args=(
+            "--pool" "$POOL_NAME"
+            "--arch" "$ARCH"
+            "--distribution" "$DISTRIBUTION"
+            "--version" "$DIST_VERSION"
+            "--codename" "$DIST_CODENAME"
+            "$BUILD_NAME"
+        )
+        [[ -n "$INSTALL_PROFILE" ]] && os_install_args+=("--profile" "$INSTALL_PROFILE")
+        [[ "$VERBOSE" == true ]] && os_install_args+=("--verbose")
+        [[ "$DRY_RUN" == true ]] && os_install_args+=("--dry-run")
+        [[ "$DEBUG" == true ]] && os_install_args+=("--debug")
 
-# Validate required arguments
-require_arg "BUILD_NAME" "$BUILD_NAME"
-require_arg "HOSTNAME" "$HOSTNAME"
+        run_cmd "$script_dir/install-root-os.sh" "${os_install_args[@]}"
+        set_build_status "os-installed"
+        log_build_event "Completed Stage 2: Base OS installation finished successfully"
+        take_snapshot "2-os-installed"
+    else
+        log_info "Stage 2: Skipping base OS installation (already completed)"
+    fi
 
-# Validate build name
-if [[ ! "$BUILD_NAME" =~ ^[a-zA-Z0-9._-]+$ ]]; then
-    die "BUILD_NAME must contain only letters, numbers, dots, dashes, and underscores"
-fi
+    # --- STAGE 3: Mount Varlog Dataset ---
+    if should_run_stage "varlog-mounted"; then
+        log_info "Stage 3: Mounting varlog dataset..."
+        log_build_event "Starting Stage 3: Mounting varlog dataset for persistent logging"
+        local varlog_args=(
+            "--pool" "$POOL_NAME"
+            "mount-varlog"
+            "$BUILD_NAME"
+        )
+        [[ "$VERBOSE" == true ]] && varlog_args+=("--verbose")
+        [[ "$DRY_RUN" == true ]] && varlog_args+=("--dry-run")
+        [[ "$DEBUG" == true ]] && varlog_args+=("--debug")
 
-# Validate distribution info and derive missing version/codename
-validate_distribution_info "$DISTRIBUTION" "$VERSION" "$CODENAME"
+        run_cmd "$script_dir/manage-root-datasets.sh" "${varlog_args[@]}"
+        set_build_status "varlog-mounted"
+        log_build_event "Completed Stage 3: Varlog dataset mounted successfully"
+        take_snapshot "3-varlog-mounted"
+    else
+        log_info "Stage 3: Skipping varlog mount (already completed)"
+    fi
 
-# Update our variables with the validated/derived values
-VERSION="$DERIVED_VERSION"
-CODENAME="$DERIVED_CODENAME"
+    # --- STAGE 4: Create and Prepare Container ---
+    if should_run_stage "container-created"; then
+        log_info "Stage 4: Creating container for Ansible execution..."
+        log_build_event "Starting Stage 4: Creating systemd-nspawn container '$HOSTNAME' for configuration"
+        local container_args=(
+            "create"
+            "--pool" "$POOL_NAME"
+            "--name" "$container_name"
+            "--hostname" "$HOSTNAME"
+            "--install-packages" "ansible,python3-apt"
+            "$BUILD_NAME"
+        )
+        [[ "$VERBOSE" == true ]] && container_args+=("--verbose")
+        [[ "$DRY_RUN" == true ]] && container_args+=("--dry-run")
+        [[ "$DEBUG" == true ]] && container_args+=("--debug")
+        
+        run_cmd "$script_dir/manage-root-containers.sh" "${container_args[@]}"
+        
+        # Start the container
+        run_cmd "$script_dir/manage-root-containers.sh" start --name "$container_name" "$BUILD_NAME"
+        
+        set_build_status "container-created"
+        log_build_event "Completed Stage 4: Container created and started successfully"
+        take_snapshot "4-container-created"
+    else
+        log_info "Stage 4: Skipping container creation (already completed)"
+    fi
 
-# Show what we're going to do
-    log "Multi-Distribution ZFS Root Builder"
-    log "============================="
-log "Build name:       $BUILD_NAME"
-log "Hostname:         $HOSTNAME"
-log "Distribution:     $DISTRIBUTION"
-log "Version:          $VERSION ($CODENAME)"
-log "Architecture:     $ARCH"
-log "ZFS pool:         $POOL_NAME"
-log "Ansible tags:     ${ANSIBLE_TAGS:-all}"
-log "Cleanup existing: $CLEANUP"
-echo
+    # Set up container cleanup on script exit
+    cleanup_container() {
+        log_info "Cleaning up container: $container_name"
+        "$script_dir/manage-root-containers.sh" destroy --name "$container_name" "$BUILD_NAME" 2>/dev/null || true
+    }
+    trap cleanup_container EXIT
 
-# Check prerequisites
-if [[ "$DRY_RUN" == false ]]; then
-    check_prerequisites "$HOSTNAME"
-fi
+    # --- STAGE 5: Configure System with Ansible ---
+    if should_run_stage "ansible-configured"; then
+        log_info "Stage 5: Configuring system with Ansible..."
+        log_build_event "Starting Stage 5: Running Ansible configuration with tags='$ANSIBLE_TAGS' limit='$ANSIBLE_LIMIT'"
+        
+        # Ensure container is running before executing Ansible commands
+        local container_name="$BUILD_NAME"
+        log_info "Ensuring container '$container_name' is running..."
+        if ! "$script_dir/manage-root-containers.sh" list 2>/dev/null | grep -q "$container_name"; then
+            log_info "Starting container '$container_name'..."
+            run_cmd "$script_dir/manage-root-containers.sh" start --name "$container_name" "$BUILD_NAME"
+        else
+            log_debug "Container '$container_name' is already running"
+        fi
+        
+        local ansible_args=(
+            "--pool" "$POOL_NAME"
+            "--limit" "$ANSIBLE_LIMIT"
+            "$BUILD_NAME"
+            "$HOSTNAME"
+        )
+        [[ -n "$ANSIBLE_TAGS" ]] && ansible_args+=("--tags" "$ANSIBLE_TAGS")
+        [[ "$VERBOSE" == true ]] && ansible_args+=("--verbose")
+        [[ "$DRY_RUN" == true ]] && ansible_args+=("--dry-run")
+        [[ "$DEBUG" == true ]] && ansible_args+=("--debug")
 
-# Execute build process
-log "Starting build process..."
+        run_cmd "$script_dir/configure-root-os.sh" "${ansible_args[@]}"
+        set_build_status "ansible-configured"
+        log_build_event "Completed Stage 5: Ansible configuration completed successfully"
+        take_snapshot "5-ansible-configured"
+    else
+        log_info "Stage 5: Skipping Ansible configuration (already completed)"
+    fi
 
-# Step 1: Create build environment
-create_build_env
+    # --- STAGE 6: Cleanup and Complete ---
+    if should_run_stage "completed"; then
+        log_info "Stage 6: Finalizing build..."
+        log_build_event "Starting Stage 6: Finalizing build and cleaning up resources"
+        
+        # Stop and destroy the container
+        run_cmd "$script_dir/manage-root-containers.sh" destroy --name "$container_name" "$BUILD_NAME"
+        
+        # Clear the cleanup trap since we're doing it manually
+        trap - EXIT
+        
+        set_build_status "completed"
+        log_build_event "Completed Stage 6: Build finished successfully - ready for deployment"
+        take_snapshot "6-completed"
+    else
+        log_info "Stage 6: Build already completed"
+    fi
 
-# Step 2: Create base system
-create_base_system
+    # --- Build Complete ---
+    local final_mountpoint="${DEFAULT_MOUNT_BASE}/${BUILD_NAME}"
+    log_info "Build '$BUILD_NAME' completed successfully!"
+    log_info "The new root filesystem is available at: $final_mountpoint"
+    log_info ""
+    log_info "To activate this build as the next boot environment:"
+    log_info "  $script_dir/manage-root-datasets.sh promote '$BUILD_NAME'"
+    log_info ""
+    log_info "To list all available root environments:"
+    log_info "  $script_dir/manage-root-datasets.sh list"
+}
 
-# Step 3: Mount varlog dataset (after base OS creation)
-mount_varlog
-
-# Step 4: Configure system
-configure_system
-
-# Step 5: Show completion summary
-if [[ "$DRY_RUN" == false ]]; then
-    show_completion
-else
-    log "DRY-RUN completed - no changes made"
-fi
+# --- Execute Main Function ---
+# Wrap in a subshell to prevent 'set -e' from exiting the user's shell
+# if the script is sourced.
+(
+    main "$@"
+)

@@ -1,233 +1,250 @@
 #!/bin/bash
+#
+# Configure Ubuntu ZFS base image with Ansible
+#
+# This script executes Ansible playbooks against a ZFS build environment.
+# It expects a systemd-nspawn container to already be created and running.
+#
 
-# Script to configure Ubuntu ZFS base image with Ansible using systemd-nspawn
-# Usage: ./configure-system.sh [OPTIONS] BASE_IMAGE_PATH
+# --- Script Setup ---
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+project_dir="$(dirname "$script_dir")"
+# shellcheck source=../lib/common.sh
+source "$project_dir/lib/common.sh"
 
-set -euo pipefail
-
-# Default values
+# --- Script-specific Default values ---
 PLAYBOOK="site.yml"
 INVENTORY="inventory"
-TAGS=""
-LIMIT=""
-CHECK_MODE=false
-VERBOSE=false
-BASE_IMAGE_PATH=""
+ANSIBLE_TAGS=""
+ANSIBLE_LIMIT=""
+BUILD_NAME=""
+HOSTNAME=""
+POOL_NAME="${DEFAULT_POOL_NAME}"
 
-# Function to show usage
+# --- Usage Information ---
 show_usage() {
     cat << EOF
-Usage: $0 [OPTIONS] BASE_IMAGE_PATH
+Usage: $0 [OPTIONS] BUILD_NAME HOSTNAME
 
-Configure Ubuntu ZFS base image using Ansible in systemd-nspawn container.
+Configures a ZFS root filesystem using Ansible. Expects a systemd-nspawn container
+to already be created and running for the specified build.
 
 ARGUMENTS:
-    BASE_IMAGE_PATH         Path to the base image directory (e.g., /mnt/ubuntu-base)
+  BUILD_NAME              The name of the build/dataset to configure (e.g., ubuntu-noble).
+  HOSTNAME                The target hostname for configuration. An Ansible host_vars file
+                          (config/host_vars/HOSTNAME.yml) must exist.
+
+PREREQUISITES:
+  - Container named BUILD_NAME must be created and running
+  - Ansible must be installed in the container
+  - Ansible configuration must be staged in /opt/ansible-config
 
 OPTIONS:
-    -p, --playbook FILE     Ansible playbook to run (default: site.yml)
-    -i, --inventory FILE    Inventory file (default: inventory)
-    -t, --tags TAGS         Only run tasks with these tags (comma-separated)
-    -l, --limit PATTERN     Limit to specific hosts
-    -c, --check             Run in check mode (dry-run)
-    -v, --verbose           Enable verbose output
-    --dry-run               Show commands without executing (alias for --check)
-    --debug                 Enable debug output
-    -h, --help              Show this help message
-
-COMMON TAG EXAMPLES:
-    -t base                 Only configure basic system (timezone, locale, hostname)
-    -t timezone,locale      Only configure timezone and locale
-    -t network              Only configure network settings
-    -t docker               Only configure Docker
-    -t etckeeper            Only configure etckeeper (Git for /etc)
+  -p, --pool POOL         ZFS pool where the build dataset resides (default: ${DEFAULT_POOL_NAME}).
+  -t, --tags TAGS         Comma-separated list of Ansible tags to run.
+  -l, --limit PATTERN     Ansible limit pattern (default: HOSTNAME).
+      --playbook FILE     Ansible playbook to run (default: ${PLAYBOOK}).
+      --inventory FILE    Ansible inventory file to use (default: ${INVENTORY}).
+      --verbose           Enable verbose output.
+      --dry-run           Show commands without executing them.
+      --debug             Enable detailed debug logging.
+  -h, --help              Show this help message.
 
 EXAMPLES:
-    # Configure everything in base image
-    $0 /mnt/ubuntu-base
+  # Configure the 'ubuntu-noble' build for host 'blackbox'
+  $0 ubuntu-noble blackbox
 
-    # Only set timezone and locale
-    $0 --tags timezone,locale /mnt/ubuntu-base
-
-    # Dry-run to see what would change
-    $0 --check /mnt/ubuntu-base
-
-    # Verbose output for debugging
-    $0 --verbose --tags base /mnt/ubuntu-base
-
-REQUIREMENTS:
-    - Must be run from the ansible/ directory or project root
-    - Base image must be a valid Ubuntu filesystem
-    - systemd-nspawn must be available on the host system
-    - Will install Ansible inside the base image if needed
+  # Configure with specific Ansible tags
+  $0 --tags base,docker ubuntu-noble blackbox
 EOF
+    exit 0
 }
 
-# Function to log messages
-log() {
-    echo "$*" >&2
+# --- Argument Parsing ---
+parse_args() {
+    local positional_args=()
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -p|--pool) POOL_NAME="$2"; shift 2 ;;
+            -t|--tags) ANSIBLE_TAGS="$2"; shift 2 ;;
+            -l|--limit) ANSIBLE_LIMIT="$2"; shift 2 ;;
+            --playbook) PLAYBOOK="$2"; shift 2 ;;
+            --inventory) INVENTORY="$2"; shift 2 ;;
+            --verbose) VERBOSE=true; shift ;;
+            --dry-run) DRY_RUN=true; shift ;;
+            --debug) DEBUG=true; shift ;;
+            -h|--help) show_usage ;;
+            -*) die "Unknown option: $1" ;;
+            *) positional_args+=("$1"); shift ;;
+        esac
+    done
+
+    if [[ ${#positional_args[@]} -ne 2 ]]; then
+        show_usage
+        die "Invalid number of arguments. Expected BUILD_NAME and HOSTNAME."
+    fi
+
+    BUILD_NAME="${positional_args[0]}"
+    HOSTNAME="${positional_args[1]}"
 }
 
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -p|--playbook)
-            PLAYBOOK="$2"
-            shift 2
-            ;;
-        -i|--inventory)
-            INVENTORY="$2"
-            shift 2
-            ;;
-        -t|--tags)
-            TAGS="$2"
-            shift 2
-            ;;
-        -l|--limit)
-            LIMIT="$2"
-            shift 2
-            ;;
-        -c|--check)
-            CHECK_MODE=true
-            shift
-            ;;
-        -v|--verbose)
-            VERBOSE=true
-            shift
-            ;;
-        --dry-run)
-            DRY_RUN=true
-            CHECK_MODE=true  # dry-run implies check mode for Ansible
-            shift
-            ;;
-        --debug)
-            DEBUG=true
-            shift
-            ;;
-        -h|--help)
-            show_usage
-            exit 0
-            ;;
-        *)
-            # Last argument should be the base image path
-            if [[ -z "$BASE_IMAGE_PATH" ]]; then
-                BASE_IMAGE_PATH="$1"
-                shift
-            else
-                log "ERROR: Unknown option $1"
-                echo "Use --help for usage information" >&2
-                exit 1
-            fi
-            ;;
-    esac
-done
+# --- Prerequisite Checks ---
+check_prerequisites() {
+    log_info "Performing prerequisite checks for configuration..."
 
-# Validate required argument
-if [[ -z "$BASE_IMAGE_PATH" ]]; then
-    log "ERROR: BASE_IMAGE_PATH is required"
-    show_usage
-    exit 1
+    # Check for required system commands
+    require_command "systemd-nspawn" "systemd-nspawn is required to configure the system."
+
+    # Check for required project structure
+    local ansible_dir
+    ansible_dir="$project_dir/ansible"
+    if [[ ! -d "$ansible_dir" ]]; then
+        die "Ansible directory not found at '$ansible_dir'."
+    fi
+    if [[ ! -f "$ansible_dir/$PLAYBOOK" ]]; then
+        die "Playbook '$PLAYBOOK' not found in '$ansible_dir'."
+    fi
+    if [[ ! -f "$ansible_dir/$INVENTORY" ]]; then
+        die "Inventory file '$INVENTORY' not found in '$ansible_dir'."
+    fi
+    local host_vars_file
+    host_vars_file="$project_dir/config/host_vars/${HOSTNAME}.yml"
+    if [[ ! -f "$host_vars_file" ]]; then
+        die "Ansible host_vars file not found for '$HOSTNAME' at '$host_vars_file'."
+    fi
+
+    # Check that the target dataset exists using the dataset management script
+    if ! "$script_dir/manage-root-datasets.sh" --pool "$POOL_NAME" list | grep -q "^${BUILD_NAME}[[:space:]]"; then
+        die "Target dataset '${POOL_NAME}/ROOT/${BUILD_NAME}' does not exist. Use manage-root-datasets.sh to create it first."
+    fi
+
+    log_info "All prerequisite checks passed."
+}
+
+# --- Main Logic ---
+main() {
+    parse_args "$@"
+    check_prerequisites
+
+    # Determine the mountpoint for the build
+    local mount_point="${DEFAULT_MOUNT_BASE}/${BUILD_NAME}"
+    log_debug "Target mountpoint: $mount_point"
+    if [[ ! -d "$mount_point" ]]; then
+        die "Target mountpoint '$mount_point' does not exist or is not mounted. Use manage-root-datasets.sh to mount the dataset first."
+    fi
+
+    # Set Ansible limit if not provided
+    if [[ -z "$ANSIBLE_LIMIT" ]]; then
+        ANSIBLE_LIMIT="$HOSTNAME"
+    fi
+
+    log_info "Starting system configuration for build '$BUILD_NAME'..."
+    log_info "  Target Host:    $HOSTNAME"
+    log_info "  Ansible Tags:   ${ANSIBLE_TAGS:-'(none)'}"
+    log_info "  Ansible Limit:  $ANSIBLE_LIMIT"
+
+    # --- STAGE 1: Prepare configuration inside the container ---
+    log_info "Preparing configuration for systemd-nspawn container..."
+
+    # Create a temporary staging directory on the host for safer preparation.
+    local staging_dir
+    staging_dir=$(mktemp -d -t ansible-config-staging-XXXXXX)
+    log_debug "Created temporary staging directory: $staging_dir"
+
+    # Ensure the staging directory is cleaned up on script exit.
+    trap 'log_debug "Cleaning up staging directory: $staging_dir"; rm -rf "$staging_dir"' EXIT
+
+    # Copy the necessary directories into the staging area.
+    log_debug "Copying ansible and config directories to staging area..."
+    run_cmd cp -rT "$project_dir/ansible" "$staging_dir/"
+    run_cmd cp -rT "$project_dir/config" "$staging_dir/config"
+
+    # Remove the old, incorrect symlinks from the staging area before creating new ones.
+    log_debug "Removing original symlinks from staging area..."
+    run_cmd rm -f "$staging_dir/host_vars" "$staging_dir/group_vars"
+
+    # Create the new, relative symlinks required by the playbook within the staging area.
+    log_debug "Creating relative symlinks in staging area..."
+    run_cmd ln -s ./config/host_vars "$staging_dir/host_vars"
+    run_cmd ln -s ./config/group_vars "$staging_dir/group_vars"
+
+    # Atomically move the prepared configuration into the container's filesystem.
+    # This is much safer than creating/deleting directories directly in the target.
+    local ansible_config_dir="${mount_point}/opt/ansible-config"
+    log_debug "Moving staged configuration to final destination: $ansible_config_dir"
+    run_cmd rm -rf "$ansible_config_dir" # This is now safe as it's a specific, known subdir.
+    run_cmd mv "$staging_dir" "$ansible_config_dir"
+
+    # Clean up the trap now that we're done with the staging directory.
+    trap - EXIT
+
+    # --- STAGE 2: Execute Ansible in existing container ---
+    log_info "Executing Ansible playbook in container..."
+    
+    # Container should already be created and started by orchestrator
+    local container_name="${BUILD_NAME}"
+    
+    # Create the ansible setup script inside the container
+    local setup_script="${mount_point}/root/setup-ansible.sh"
+    cat > "$setup_script" << 'SCRIPT_EOF'
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+export LC_ALL=C.UTF-8 LANG=C.UTF-8 LANGUAGE=C.UTF-8
+cd /opt/ansible-config
+
+# Ansible should already be installed, just install role/collection dependencies
+if [[ -f 'requirements.yml' ]]; then
+    echo 'Installing Ansible role dependencies...'
+    ansible-galaxy install -r requirements.yml -p ./roles
+    echo 'Installing Ansible collection dependencies...'
+    ansible-galaxy collection install -r requirements.yml -p ./collections
+else
+    echo 'No requirements.yml found, skipping role installation.'
 fi
+SCRIPT_EOF
+    chmod +x "$setup_script"
 
-# Validate base image path
-if [[ ! -d "$BASE_IMAGE_PATH" ]]; then
-    log "ERROR: Base image path '$BASE_IMAGE_PATH' does not exist"
-    exit 1
-fi
+    # Create the main ansible execution script
+    local ansible_playbook_cmd=(
+        "ansible-playbook"
+        "-i" "inventory"
+        "$PLAYBOOK"
+        "-c" "local"
+        "-l" "$ANSIBLE_LIMIT"
+    )
+    [[ -n "$ANSIBLE_TAGS" ]] && ansible_playbook_cmd+=("--tags" "$ANSIBLE_TAGS")
+    [[ "$VERBOSE" == true ]] && ansible_playbook_cmd+=("-vv")
+    [[ "$DRY_RUN" == true ]] && ansible_playbook_cmd+=("--check" "--diff")
+    
+    local run_script="${mount_point}/root/run-ansible.sh"
+    cat > "$run_script" << SCRIPT_EOF
+#!/bin/bash
+set -euo pipefail
+cd /opt/ansible-config
+echo 'Executing Ansible playbook...'
+${ansible_playbook_cmd[*]}
+SCRIPT_EOF
+    chmod +x "$run_script"
 
-if [[ ! -f "$BASE_IMAGE_PATH/etc/os-release" ]]; then
-    log "ERROR: '$BASE_IMAGE_PATH' does not appear to be a valid Ubuntu filesystem"
-    exit 1
-fi
+    # Execute Ansible setup and playbook in the container
+    log_info "Setting up Ansible dependencies in container..."
+    if ! run_cmd "$script_dir/manage-root-containers.sh" exec --name "$container_name" "$BUILD_NAME" /root/setup-ansible.sh; then
+        log_error "Failed to setup Ansible in container"
+        return 1
+    fi
+    
+    log_info "Executing Ansible playbook in container..."
+    if ! run_cmd "$script_dir/manage-root-containers.sh" exec --name "$container_name" "$BUILD_NAME" /root/run-ansible.sh; then
+        log_error "Ansible playbook execution failed"
+        return 1
+    fi
 
-# Get script directory and ansible directory
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ansible_dir="$script_dir/../ansible"
+    log_info "Configuration of build '$BUILD_NAME' completed successfully."
+}
 
-# Check if we have the ansible directory and files
-if [[ ! -f "$ansible_dir/$PLAYBOOK" ]]; then
-    log "ERROR: Playbook '$PLAYBOOK' not found in $ansible_dir"
-    exit 1
-fi
-
-if [[ ! -f "$ansible_dir/$INVENTORY" ]]; then
-    log "ERROR: Inventory file '$INVENTORY' not found in $ansible_dir"
-    exit 1
-fi
-
-
-# Prepare configuration for container
-log "Preparing configuration for systemd-nspawn container..."
-# Remove any existing configuration to ensure fresh copy
-rm -rf "$BASE_IMAGE_PATH/opt/ansible-config"
-mkdir -p "$BASE_IMAGE_PATH/opt/ansible-config"
-cp -r "$ansible_dir"/* "$BASE_IMAGE_PATH/opt/ansible-config/"
-cp -r "$script_dir/../config" "$BASE_IMAGE_PATH/opt/ansible-config/"
-
-# Fix symlinks to point to correct relative paths in container
-cd "$BASE_IMAGE_PATH/opt/ansible-config"
-if [[ -L "host_vars" ]]; then
-    rm host_vars
-    ln -s ./config/host_vars host_vars
-fi
-if [[ -L "group_vars" ]]; then
-    rm group_vars  
-    ln -s ./config/group_vars group_vars
-fi
-
-
-# Build the ansible-playbook command
-ANSIBLE_CMD="ansible-playbook"
-ANSIBLE_CMD+=" -i $INVENTORY"
-ANSIBLE_CMD+=" $PLAYBOOK"
-
-if [[ -n "$TAGS" ]]; then
-    ANSIBLE_CMD+=" --tags $TAGS"
-fi
-
-if [[ -n "$LIMIT" ]]; then
-    ANSIBLE_CMD+=" --limit $LIMIT"
-fi
-
-if [[ "$CHECK_MODE" == true ]]; then
-    ANSIBLE_CMD+=" --check --diff"
-    log "Running in CHECK MODE (dry-run)"
-fi
-
-if [[ "$VERBOSE" == true ]]; then
-    ANSIBLE_CMD+=" -vv"
-fi
-
-log "Using systemd-nspawn container for Ansible execution"
-
-# Build systemd-nspawn command with inline script execution
-NSPAWN_CMD="systemd-nspawn"
-NSPAWN_CMD+=" --directory=$BASE_IMAGE_PATH"
-NSPAWN_CMD+=" --console=pipe"
-NSPAWN_CMD+=" --machine=ubuntu-config-$$"
-NSPAWN_CMD+=" --quiet"
-NSPAWN_CMD+=" /bin/bash -c \""
-NSPAWN_CMD+="set -euo pipefail && "
-NSPAWN_CMD+="export DEBIAN_FRONTEND=noninteractive && "
-NSPAWN_CMD+="export LC_ALL=C.UTF-8 && "
-NSPAWN_CMD+="export LANG=C.UTF-8 && "
-NSPAWN_CMD+="export LANGUAGE=C.UTF-8 && "
-NSPAWN_CMD+="export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && "
-NSPAWN_CMD+="cd /opt/ansible-config && "
-NSPAWN_CMD+=""
-NSPAWN_CMD+="if ! command -v ansible-playbook >/dev/null 2>&1; then "
-NSPAWN_CMD+="echo 'Installing Ansible...' && "
-NSPAWN_CMD+="echo 'deb http://archive.ubuntu.com/ubuntu plucky main restricted universe multiverse' > /etc/apt/sources.list && "
-NSPAWN_CMD+="echo 'deb http://archive.ubuntu.com/ubuntu plucky-updates main restricted universe multiverse' >> /etc/apt/sources.list && "
-NSPAWN_CMD+="echo 'deb http://security.ubuntu.com/ubuntu plucky-security main restricted universe multiverse' >> /etc/apt/sources.list && "
-NSPAWN_CMD+="apt-get update && apt-get install -y ansible python3-apt; "
-NSPAWN_CMD+="fi && "
-NSPAWN_CMD+="echo 'Installing Ansible role dependencies...' && "
-NSPAWN_CMD+="ansible-galaxy install -r requirements.yml && "
-NSPAWN_CMD+="$ANSIBLE_CMD"
-NSPAWN_CMD+="\""
-
-log "Running: $NSPAWN_CMD"
-eval "$NSPAWN_CMD"
-
-log "Configuration completed successfully"
+# --- Execute Main Function ---
+(
+    main "$@"
+)

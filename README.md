@@ -40,8 +40,8 @@ This system creates **ZFS Boot Environments** - complete, independent Ubuntu ins
 
 - **`build-new-root.sh`** — **Main orchestrator** that coordinates the complete build process
 - **`create-zfs-datasets.sh`** — ZFS dataset and mount point management with conditional varlog mounting
-- **`install-base-os.sh`** — Base OS creation using mmdebstrap (supports Ubuntu, Debian, and derivatives)
-- **`configure-system.sh`** — System configuration using Ansible in systemd-nspawn containers
+- **`install-root-os.sh`** — Base OS creation using mmdebstrap (supports Ubuntu, Debian, and derivatives)
+- **`configure-root-os.sh`** — System configuration using Ansible in systemd-nspawn containers
 - **`get-ubuntu-version.sh`** — Ubuntu release validation and version/codename mapping utility
 - **`lib/common.sh`** — Shared functionality and smart distribution validation
 
@@ -83,24 +83,31 @@ For more control, run each step manually:
 sudo ./scripts/create-zfs-datasets.sh --cleanup --verbose plucky
 
 # 2. Build base Ubuntu system (with conditional varlog mounting)
-sudo ./scripts/install-base-os.sh --verbose --codename plucky /var/tmp/zfs-builds/plucky
+sudo ./scripts/install-root-os.sh --verbose --codename plucky /var/tmp/zfs-builds/plucky
 
 # 3. Mount varlog after base system creation
 sudo ./scripts/create-zfs-datasets.sh --mount-varlog plucky
 
 # 4. Configure with Ansible
-sudo ./scripts/configure-system.sh --verbose --limit myserver /var/tmp/zfs-builds/plucky
+sudo ./scripts/configure-root-os.sh --tags docker myserver /var/tmp/zfs-builds/plucky
+
+sudo ./scripts/configure-root-os.sh --tags base myserver /var/tmp/zfs-builds/plucky
+
+sudo ./scripts/configure-root-os.sh --tags base,network myserver /var/tmp/zfs-builds/plucky
 ```
 
 ## 📸 ZFS Snapshots & Change Tracking
 
 ### Automated Build Snapshots
 
-The system can create ZFS snapshots at each major build stage for easy rollback:
+The system creates ZFS snapshots at each major build stage by default for easy rollback:
 
 ```bash
-# Build with automatic snapshots at each stage
-sudo ./scripts/build-new-root.sh --snapshots --cleanup --codename plucky myserver blackbox
+# Build with automatic snapshots (enabled by default)
+sudo ./scripts/build-new-root.sh --cleanup --codename plucky myserver blackbox
+
+# Disable snapshots if not needed
+sudo ./scripts/build-new-root.sh --no-snapshots --cleanup --codename plucky myserver blackbox
 ```
 
 **Snapshot Stages Created:**
@@ -275,12 +282,39 @@ All scripts support consistent flags:
 --verbose      # Enable verbose output
 --dry-run      # Show commands without executing
 --debug        # Enable debug output
---snapshots    # Create ZFS snapshots at build stages (build-new-root.sh only)
+--snapshots    # Force enable ZFS snapshots (enabled by default)
+--no-snapshots # Disable ZFS snapshots at build stages
 --cleanup      # Remove existing build datasets before starting
 --help         # Show help message
 ```
 
 Flags are automatically propagated from the orchestrator to all child scripts.
+
+### Container Management
+
+The system provides dedicated container management for running Ansible and other tasks:
+
+```bash
+# Create container with Ansible pre-installed
+sudo ./scripts/manage-root-containers.sh create --install-packages ansible,python3-apt ubuntu-noble
+
+# Start container for interactive work
+sudo ./scripts/manage-root-containers.sh start ubuntu-noble
+
+# Get shell access to container
+sudo ./scripts/manage-root-containers.sh shell ubuntu-noble
+
+# Stop and destroy container when done
+sudo ./scripts/manage-root-containers.sh destroy ubuntu-noble
+
+# List all running containers
+sudo ./scripts/manage-root-containers.sh list
+```
+
+This separation allows for:
+- **Build-time configuration** - Automated during system creation
+- **Live system management** - Run Ansible against booted systems
+- **Interactive debugging** - Shell access to containers for troubleshooting
 
 ### Conditional Varlog Mounting
 
@@ -294,24 +328,62 @@ The system handles mmdebstrap's requirement for empty directories elegantly:
 
 ### Complete Build Process
 
-1. **Dataset Creation** (`create-zfs-datasets.sh`)
+The build process is now **resumable** with automatic status tracking:
+
+1. **Dataset Creation** (`manage-root-datasets.sh`)
    - Creates `{pool}/ROOT/{codename}` and `{pool}/ROOT/{codename}/varlog`
    - Sets `mountpoint=legacy` for build safety
-   - Conditionally mounts varlog (skipped during mmdebstrap)
+   - Status: `datasets-created`
 
-2. **Base OS Installation** (`install-base-os.sh`)
+2. **Base OS Installation** (`install-root-os.sh`)
    - Uses mmdebstrap in Docker for clean, reproducible builds
    - Online Ubuntu release validation using `get-ubuntu-version.sh`
    - Creates minimal, ZFS-optimized base system
+   - Status: `os-installed`
 
 3. **Varlog Mounting** (`create-zfs-datasets.sh --mount-varlog`)
    - Mounts varlog dataset after base system creation
    - Preserves existing logs as `/var/log.old`
+   - Status: `varlog-mounted`
 
-4. **System Configuration** (`configure-system.sh`)
-   - Uses systemd-nspawn for isolated configuration
-   - Applies Ansible roles and host-specific configuration
+4. **Container Creation** (`manage-root-containers.sh`)
+   - Creates systemd-nspawn container with Ansible pre-installed
+   - Copies hostid for ZFS compatibility
+   - Starts container with networking
+   - Status: `container-created`
+
+5. **System Configuration** (`configure-root-os.sh`)
+   - Stages Ansible configuration into container
+   - Executes Ansible playbooks against localhost
    - Handles user accounts, packages, services, etc.
+   - Status: `ansible-configured`
+
+6. **Cleanup and Completion**
+   - Destroys temporary container
+   - Marks build as complete
+   - Status: `completed`
+
+### Resumable Builds
+
+If a build fails or is interrupted, simply re-run the same command:
+
+```bash
+# This will resume from where it left off
+sudo ./scripts/build-new-root.sh --verbose plucky myserver
+
+# Force restart from beginning
+sudo ./scripts/build-new-root.sh --restart --verbose plucky myserver
+
+# Check current build status
+sudo ./scripts/manage-build-status.sh list
+sudo ./scripts/manage-build-status.sh get plucky
+```
+
+**Build Status Tracking:**
+- Status files stored in `/var/tmp/zfs-builds/BUILD_NAME.status`
+- Each stage is only run if the previous stage completed successfully
+- Failed builds can be resumed or restarted
+- Supports multiple concurrent builds with different names
 
 ### Boot Environment Deployment
 
@@ -332,10 +404,12 @@ sudo reboot
 
 ```
 ├── scripts/                    # Main executables
-│   ├── build-new-root.sh      # Main orchestrator
+│   ├── build-new-root.sh      # Main orchestrator with resumable builds
 │   ├── create-zfs-datasets.sh # ZFS management
-│   ├── install-base-os.sh     # Base OS creation
-│   ├── configure-system.sh    # Ansible configuration
+│   ├── install-root-os.sh     # Base OS creation
+│   ├── configure-root-os.sh  # Ansible configuration
+│   ├── manage-root-containers.sh # Container lifecycle management
+│   ├── manage-build-status.sh # Build status and resumability
 │   └── get-ubuntu-version.sh  # Ubuntu release utility
 ├── lib/
 │   └── common.sh              # Shared functionality
@@ -409,14 +483,14 @@ Secrets are encrypted using Mozilla [sops](https://github.com/mozilla/sops):
 ### Build Multiple Environments
 
 ```bash
-# Build LTS version with snapshots
-sudo ./scripts/build-new-root.sh --snapshots --cleanup --codename noble server-lts server-lts
+# Build LTS version (snapshots enabled by default)
+sudo ./scripts/build-new-root.sh --cleanup --codename noble server-lts server-lts
 
 # Build latest version with full debugging
-sudo ./scripts/build-new-root.sh --snapshots --cleanup --verbose --debug --codename plucky server-latest server-latest
+sudo ./scripts/build-new-root.sh --cleanup --verbose --debug --codename plucky server-latest server-latest
 
-# Build Debian alternative
-sudo ./scripts/build-new-root.sh --cleanup --distribution debian --codename bookworm debian-server debian-server
+# Build Debian alternative without snapshots
+sudo ./scripts/build-new-root.sh --no-snapshots --cleanup --distribution debian --codename bookworm debian-server debian-server
 ```
 
 ### Snapshot Workflow
@@ -431,10 +505,59 @@ sudo ./scripts/zfs-snapshot-manager.sh rollback zroot/ROOT/plucky zroot/ROOT/plu
 
 # Continue from base OS state
 sudo ./scripts/create-zfs-datasets.sh --mount-varlog plucky  
-sudo ./scripts/configure-system.sh --limit myserver /var/tmp/zfs-builds/plucky
+sudo ./scripts/configure-root-os.sh --limit myserver /var/tmp/zfs-builds/plucky
 
 # Create new snapshot after manual changes
 sudo ./scripts/zfs-snapshot-manager.sh create zroot/ROOT/plucky manual-changes
+```
+
+### Resumable Build Workflow
+
+Manage long-running builds with automatic resumption:
+
+```bash
+# Start a build
+sudo ./scripts/build-new-root.sh --snapshots --verbose ubuntu-test myserver
+
+# If interrupted, check status
+sudo ./scripts/manage-build-status.sh get ubuntu-test
+# Output: os-installed
+
+# Resume from where it left off
+sudo ./scripts/build-new-root.sh --verbose ubuntu-test myserver
+# Only runs remaining stages: varlog-mounted, container-created, ansible-configured, completed
+
+# Monitor all builds
+sudo ./scripts/manage-build-status.sh list
+# Output:
+# Build Status Summary:
+# ====================
+# ubuntu-test          ansible-configured   2025-07-25T08:42:15+00:00
+# production           completed            2025-07-25T07:30:22+00:00
+
+# Force complete restart if needed
+sudo ./scripts/build-new-root.sh --restart --verbose ubuntu-test myserver
+```
+
+### Container-Based Management
+
+Use containers for ongoing system management:
+
+```bash
+# Create management container for live system
+sudo ./scripts/manage-root-containers.sh create --install-packages ansible,python3-apt production-system
+
+# Start container
+sudo ./scripts/manage-root-containers.sh start production-system
+
+# Run specific Ansible tasks
+sudo ./scripts/manage-root-containers.sh shell production-system
+# Inside container:
+cd /opt/ansible-config
+ansible-playbook -i inventory site.yml --tags docker --limit production-host
+
+# Clean up when done
+sudo ./scripts/manage-root-containers.sh destroy production-system
 ```
 
 ### Configuration Tags
@@ -461,7 +584,7 @@ Apply Ansible changes to existing system:
 sudo ./scripts/realign.sh
 
 # Update specific boot environment
-sudo ./scripts/configure-system.sh --limit server-name /var/tmp/zfs-builds/plucky
+sudo ./scripts/configure-root-os.sh --limit server-name /var/tmp/zfs-builds/plucky
 ```
 
 ### Recovery and Rollback
