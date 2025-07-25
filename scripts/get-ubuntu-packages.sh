@@ -18,7 +18,7 @@ source "$script_dir/../lib/common.sh"
 # Function to fetch Ubuntu package manifests from official sources
 fetch_ubuntu_manifests() {
     local codename="$1"
-    local arch="${2:-amd64}"
+    local arch="${2:-$DEFAULT_ARCH}"
     shift 2
     local seeds=("$@")
     
@@ -27,7 +27,7 @@ fetch_ubuntu_manifests() {
     [[ "$VERBOSE" == "true" ]] && log_info "Fetching Ubuntu $codename package manifests for $arch architecture..."
     
     # Ubuntu package seeds are hosted at ubuntu-archive-team.ubuntu.com
-    local seed_base_url="https://ubuntu-archive-team.ubuntu.com/seeds/ubuntu.$codename"
+    local seed_base_url="$UBUNTU_SEEDS_BASE_URL/ubuntu.$codename"
     
     # Declare associative array to store package lists in memory
     declare -gA PACKAGE_LISTS
@@ -190,7 +190,7 @@ EOF
 # Main function
 main() {
     local codename=""
-    local arch="${DEFAULT_ARCH:-amd64}"
+    local arch="$DEFAULT_ARCH"
     local seeds=()
     
     # Parse arguments

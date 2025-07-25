@@ -10,41 +10,13 @@ project_dir="$(dirname "$script_dir")"
 source "$project_dir/lib/common.sh"
 
 # --- Constants ---
-# STATUS_DIR is now loaded from global configuration
-STATUS_FILE_SUFFIX=".status"
-BUILD_LOG_SUFFIX=".log"
+# Constants are now loaded from lib/constants.sh via common.sh
 
-# Status values
-STATUS_STARTED="started"
-STATUS_DATASETS_CREATED="datasets-created"
-STATUS_OS_INSTALLED="os-installed"
-STATUS_VARLOG_MOUNTED="varlog-mounted"
-STATUS_CONTAINER_CREATED="container-created"
-STATUS_ANSIBLE_CONFIGURED="ansible-configured"
-STATUS_COMPLETED="completed"
-STATUS_FAILED="failed"
-
-# All valid statuses in order
-VALID_STATUSES=(
-    "$STATUS_STARTED"
-    "$STATUS_DATASETS_CREATED"
-    "$STATUS_OS_INSTALLED"
-    "$STATUS_VARLOG_MOUNTED"
-    "$STATUS_CONTAINER_CREATED"
-    "$STATUS_ANSIBLE_CONFIGURED"
-    "$STATUS_COMPLETED"
-)
-
-# Status progression map - what comes next after each status
-declare -A NEXT_STATUS=(
-    ["$STATUS_STARTED"]="$STATUS_DATASETS_CREATED"
-    ["$STATUS_DATASETS_CREATED"]="$STATUS_OS_INSTALLED"
-    ["$STATUS_OS_INSTALLED"]="$STATUS_VARLOG_MOUNTED"
-    ["$STATUS_VARLOG_MOUNTED"]="$STATUS_CONTAINER_CREATED"
-    ["$STATUS_CONTAINER_CREATED"]="$STATUS_ANSIBLE_CONFIGURED"
-    ["$STATUS_ANSIBLE_CONFIGURED"]="$STATUS_COMPLETED"
-    ["$STATUS_FAILED"]="$STATUS_DATASETS_CREATED"
-)
+# Status progression map - imported from constants.sh as STATUS_PROGRESSION
+declare -A NEXT_STATUS=()
+for status in "${!STATUS_PROGRESSION[@]}"; do
+    NEXT_STATUS["$status"]="${STATUS_PROGRESSION[$status]}"
+done
 
 # --- Functions ---
 
@@ -118,14 +90,17 @@ get_manage_script_path() {
 log_build_event() {
     local build_name="$1"
     local message="$2"
-    local log_file
-    log_file=$(get_log_file "$build_name")
     
-    # Ensure status directory exists
-    mkdir -p "$STATUS_DIR"
+    # Use the integrated logging system from common.sh
+    local old_context="$BUILD_LOG_CONTEXT"
+    set_build_log_context "$build_name"
     
-    # Append to build log with timestamp
-    echo "$(date -Iseconds) $message" >> "$log_file"
+    # Log to file only (console logging is handled elsewhere)
+    log_file_info "$message"
+    
+    # Restore previous context
+    BUILD_LOG_CONTEXT="$old_context"
+}
 }
 
 set_status() {
@@ -137,15 +112,11 @@ set_status() {
     # Ensure status directory exists
     mkdir -p "$STATUS_DIR"
     
-    # Append status with timestamp (append-only format)
-    # Format: TIMESTAMP STATUS=value (build name is in filename)
-    local timestamp=$(date -Iseconds)
-    echo "$timestamp STATUS=$status" >> "$status_file"
+    # Append new status entry with timestamp
+    echo "$(date -Iseconds) STATUS=$status" >> "$status_file"
     
-    # Log the status change
-    log_build_event "$build_name" "Status changed to: $status"
-    
-    log_debug "Status appended to: $status_file"
+    # Log the status change using integrated logging
+    log_status_change "$build_name" "" "$status" false
 }
 
 get_status() {

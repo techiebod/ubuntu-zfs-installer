@@ -56,10 +56,8 @@ OPTIONS:
                           (default: ${DEFAULT_MOUNT_BASE}).
       --cleanup           When creating, destroy any existing dataset with the same name first.
       --force             For 'destroy', bypass the confirmation prompt.
-      --verbose           Enable verbose output.
-      --dry-run           Show commands without executing them.
-      --debug             Enable detailed debug logging.
-  -h, --help              Show this help message.
+
+$(show_common_options_help)
 
 EXAMPLES:
   # List all current root datasets
@@ -317,20 +315,24 @@ list_root_datasets() {
 
 # --- Argument Parsing ---
 parse_args() {
+    local remaining_args=()
+    
+    # First pass: handle common arguments
+    parse_common_args remaining_args "$@"
+    
+    # Second pass: handle script-specific arguments
     local positional_args=()
-
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            -p|--pool) POOL_NAME="$2"; shift 2 ;;
-            -m|--mount-base) MOUNT_BASE="$2"; shift 2 ;;
-            --cleanup) CLEANUP=true; shift ;;
-            --force) FORCE_DESTROY=true; shift ;;
-            --verbose) VERBOSE=true; shift ;;
-            --dry-run) DRY_RUN=true; shift ;;
-            --debug) DEBUG=true; shift ;;
+    local args=("${remaining_args[@]}")
+    
+    while [[ ${#args[@]} -gt 0 ]]; do
+        case "${args[0]}" in
+            -p|--pool) POOL_NAME="${args[1]}"; args=("${args[@]:2}") ;;
+            -m|--mount-base) MOUNT_BASE="${args[1]}"; args=("${args[@]:2}") ;;
+            --cleanup) CLEANUP=true; args=("${args[@]:1}") ;;
+            --force) FORCE_DESTROY=true; args=("${args[@]:1}") ;;
             -h|--help) show_usage; exit 0 ;;
-            -*) die "Unknown option: $1" ;;
-            *) positional_args+=("$1"); shift ;;
+            -*) die "Unknown option: ${args[0]}" ;;
+            *) positional_args+=("${args[0]}"); args=("${args[@]:1}") ;;
         esac
     done
 

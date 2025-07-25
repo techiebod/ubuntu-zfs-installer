@@ -169,10 +169,8 @@ ARGUMENTS:
 
 OPTIONS:
   -p, --pool POOL             The ZFS pool to operate on (default: ${DEFAULT_POOL_NAME}).
-  -v, --verbose               Enable verbose output.
-  -n, --dry-run               Show what would be done without executing.
-  -d, --debug                 Enable detailed debug logging.
-  -h, --help                  Show this help message.
+
+$(show_common_options_help)
 
 EXAMPLES:
   # Create a snapshot after base OS installation for 'plucky'
@@ -195,30 +193,33 @@ main() {
     # For list action, disable timestamps for cleaner output
     [[ "${1:-}" == "list" ]] && LOG_WITH_TIMESTAMPS=false
 
+    local remaining_args=()
+    
+    # First pass: handle common arguments
+    parse_common_args remaining_args "$@"
+    
     local action=""
     local root_name=""
     local argument=""
+    local args=("${remaining_args[@]}")
 
     # Argument parsing
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            -p|--pool) POOL_NAME="$2"; shift 2 ;;
-            -v|--verbose) VERBOSE=true; shift ;;
-            -n|--dry-run) DRY_RUN=true; shift ;;
-            -d|--debug) DEBUG=true; shift ;;
+    while [[ ${#args[@]} -gt 0 ]]; do
+        case "${args[0]}" in
+            -p|--pool) POOL_NAME="${args[1]}"; args=("${args[@]:2}") ;;
             -h|--help) show_usage ;;
-            -*) die "Unknown option: $1" ;;
+            -*) die "Unknown option: ${args[0]}" ;;
             *)
                 if [[ -z "$action" ]]; then
-                    action="$1"
+                    action="${args[0]}"
                 elif [[ -z "$root_name" ]]; then
-                    root_name="$1"
+                    root_name="${args[0]}"
                 elif [[ -z "$argument" ]]; then
-                    argument="$1"
+                    argument="${args[0]}"
                 else
                     die "Too many arguments."
                 fi
-                shift
+                args=("${args[@]:1}")
                 ;;
         esac
     done

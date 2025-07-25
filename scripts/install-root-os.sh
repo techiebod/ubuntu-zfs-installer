@@ -42,10 +42,8 @@ OPTIONS:
       --profile PROFILE   Installation profile: minimal, standard, full (default: ${DEFAULT_INSTALL_PROFILE:-minimal}).
       --variant VARIANT   Debootstrap variant (default: ${DEFAULT_VARIANT}).
       --docker-image IMG  Docker image to use for the build (default: ${DEFAULT_DOCKER_IMAGE}).
-      --verbose           Enable verbose output.
-      --dry-run           Show commands without executing them.
-      --debug             Enable detailed debug logging.
-  -h, --help              Show this help message.
+
+$(show_common_options_help)
 
 REQUIREMENTS:
   - Docker must be installed and running.
@@ -56,28 +54,33 @@ EOF
 
 # --- Argument Parsing ---
 parse_args() {
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            -p|--pool) POOL_NAME="$2"; shift 2 ;;
-            -d|--distribution) DISTRIBUTION="$2"; shift 2 ;;
-            -v|--version) VERSION="$2"; shift 2 ;;
-            -c|--codename) CODENAME="$2"; shift 2 ;;
-            -a|--arch) ARCH="$2"; shift 2 ;;
-            --profile) PROFILE="$2"; shift 2 ;;
-            --variant) VARIANT="$2"; shift 2 ;;
-            --docker-image) DOCKER_IMAGE="$2"; shift 2 ;;
-            --verbose) VERBOSE=true; shift ;;
-            --dry-run) DRY_RUN=true; shift ;;
-            --debug) DEBUG=true; shift ;;
+    local remaining_args=()
+    
+    # First pass: handle common arguments
+    parse_common_args remaining_args "$@"
+    
+    # Second pass: handle script-specific arguments
+    local args=("${remaining_args[@]}")
+    
+    while [[ ${#args[@]} -gt 0 ]]; do
+        case "${args[0]}" in
+            -p|--pool) POOL_NAME="${args[1]}"; args=("${args[@]:2}") ;;
+            -d|--distribution) DISTRIBUTION="${args[1]}"; args=("${args[@]:2}") ;;
+            -v|--version) VERSION="${args[1]}"; args=("${args[@]:2}") ;;
+            -c|--codename) CODENAME="${args[1]}"; args=("${args[@]:2}") ;;
+            -a|--arch) ARCH="${args[1]}"; args=("${args[@]:2}") ;;
+            --profile) PROFILE="${args[1]}"; args=("${args[@]:2}") ;;
+            --variant) VARIANT="${args[1]}"; args=("${args[@]:2}") ;;
+            --docker-image) DOCKER_IMAGE="${args[1]}"; args=("${args[@]:2}") ;;
             -h|--help) show_usage ;;
-            -*) die "Unknown option: $1" ;;
+            -*) die "Unknown option: ${args[0]}" ;;
             *)
                 if [[ -z "$BUILD_NAME" ]]; then
-                    BUILD_NAME="$1"
+                    BUILD_NAME="${args[0]}"
                 else
                     die "Too many arguments. Expected a single BUILD_NAME."
                 fi
-                shift
+                args=("${args[@]:1}")
                 ;;
         esac
     done
@@ -146,6 +149,9 @@ check_prerequisites() {
         show_usage
         die "Missing required arguments: BUILD_NAME, --distribution, --version, and --codename."
     fi
+    
+    validate_architecture "$ARCH"
+    validate_distribution "$DISTRIBUTION"
 
     check_docker
     check_zfs_pool "$POOL_NAME"
@@ -195,7 +201,7 @@ mmdebstrap \\
     --components="$apt_components" \\
     --include=$base_packages \\
     --customize-hook='echo "\$HOST_ID_VAR" > "\$1/etc/hostid"' \\
-    --customize-hook='chroot "\$1" apt-mark hold grub-common grub-efi-amd64 grub-efi-amd64-bin grub-efi-amd64-signed grub2-common lilo lilo-doc mbr openipmi &>/dev/null || true' \\
+    --customize-hook='chroot "\$1" apt-mark hold $GRUB_PACKAGES_TO_HOLD ${ARCH_GRUB_PACKAGES[$ARCH]:-} &>/dev/null || true' \\
     "$CODENAME" \\
     "/output"
 EOF

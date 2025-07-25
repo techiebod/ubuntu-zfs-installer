@@ -68,32 +68,34 @@ EOF
 
 # --- Argument Parsing ---
 parse_args() {
-    if [[ $# -eq 0 ]]; then
+    local remaining_args=()
+    
+    # First pass: handle common arguments
+    parse_common_args remaining_args "$@"
+    
+    if [[ ${#remaining_args[@]} -eq 0 ]]; then
         show_usage
     fi
 
     # Check for help first
-    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    if [[ "${remaining_args[0]}" == "--help" || "${remaining_args[0]}" == "-h" ]]; then
         show_usage
     fi
 
-    ACTION="$1"
-    shift
+    ACTION="${remaining_args[0]}"
+    local args=("${remaining_args[@]:1}")
 
     local positional_args=()
 
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            -p|--pool) POOL_NAME="$2"; shift 2 ;;
-            -n|--name) CONTAINER_NAME="$2"; shift 2 ;;
-            -h|--hostname) HOSTNAME="$2"; shift 2 ;;
-            --install-packages) INSTALL_PACKAGES="$2"; shift 2 ;;
-            --verbose) VERBOSE=true; shift ;;
-            --dry-run) DRY_RUN=true; shift ;;
-            --debug) DEBUG=true; shift ;;
+    while [[ ${#args[@]} -gt 0 ]]; do
+        case "${args[0]}" in
+            -p|--pool) POOL_NAME="${args[1]}"; args=("${args[@]:2}") ;;
+            -n|--name) CONTAINER_NAME="${args[1]}"; args=("${args[@]:2}") ;;
+            -h|--hostname) HOSTNAME="${args[1]}"; args=("${args[@]:2}") ;;
+            --install-packages) INSTALL_PACKAGES="${args[1]}"; args=("${args[@]:2}") ;;
             --help) show_usage ;;
-            -*) die "Unknown option: $1" ;;
-            *) positional_args+=("$1"); shift ;;
+            -*) die "Unknown option: ${args[0]}" ;;
+            *) positional_args+=("${args[0]}"); args=("${args[@]:1}") ;;
         esac
     done
 

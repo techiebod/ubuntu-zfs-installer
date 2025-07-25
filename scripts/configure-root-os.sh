@@ -62,21 +62,25 @@ EOF
 
 # --- Argument Parsing ---
 parse_args() {
+    local remaining_args=()
+    
+    # First pass: handle common arguments
+    parse_common_args remaining_args "$@"
+    
+    # Second pass: handle script-specific arguments
     local positional_args=()
+    local args=("${remaining_args[@]}")
 
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            -p|--pool) POOL_NAME="$2"; shift 2 ;;
-            -t|--tags) ANSIBLE_TAGS="$2"; shift 2 ;;
-            -l|--limit) ANSIBLE_LIMIT="$2"; shift 2 ;;
-            --playbook) PLAYBOOK="$2"; shift 2 ;;
-            --inventory) INVENTORY="$2"; shift 2 ;;
-            --verbose) VERBOSE=true; shift ;;
-            --dry-run) DRY_RUN=true; shift ;;
-            --debug) DEBUG=true; shift ;;
+    while [[ ${#args[@]} -gt 0 ]]; do
+        case "${args[0]}" in
+            -p|--pool) POOL_NAME="${args[1]}"; args=("${args[@]:2}") ;;
+            -t|--tags) ANSIBLE_TAGS="${args[1]}"; args=("${args[@]:2}") ;;
+            -l|--limit) ANSIBLE_LIMIT="${args[1]}"; args=("${args[@]:2}") ;;
+            --playbook) PLAYBOOK="${args[1]}"; args=("${args[@]:2}") ;;
+            --inventory) INVENTORY="${args[1]}"; args=("${args[@]:2}") ;;
             -h|--help) show_usage ;;
-            -*) die "Unknown option: $1" ;;
-            *) positional_args+=("$1"); shift ;;
+            -*) die "Unknown option: ${args[0]}" ;;
+            *) positional_args+=("${args[0]}"); args=("${args[@]:1}") ;;
         esac
     done
 

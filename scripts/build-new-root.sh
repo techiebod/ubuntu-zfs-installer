@@ -86,33 +86,38 @@ EOF
 
 # --- Argument Parsing ---
 parse_args() {
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            -d|--distribution) DISTRIBUTION="$2"; shift 2 ;;
-            -v|--version) VERSION="$2"; shift 2 ;;
-            -c|--codename) CODENAME="$2"; shift 2 ;;
-            -a|--arch) ARCH="$2"; shift 2 ;;
-            -p|--pool) POOL_NAME="$2"; shift 2 ;;
-            --profile) INSTALL_PROFILE="$2"; shift 2 ;;
-            -t|--tags) ANSIBLE_TAGS="$2"; shift 2 ;;
-            -l|--limit) ANSIBLE_LIMIT="$2"; shift 2 ;;
-            --snapshots) CREATE_SNAPSHOTS=true; shift ;;
-            --no-snapshots) CREATE_SNAPSHOTS=false; shift ;;
-            --restart) FORCE_RESTART=true; shift ;;
-            --verbose) VERBOSE=true; shift ;;
-            --dry-run) DRY_RUN=true; shift ;;
-            --debug) DEBUG=true; shift ;;
+    local remaining_args=()
+    
+    # First pass: handle common arguments
+    parse_common_args remaining_args "$@"
+    
+    # Second pass: handle script-specific arguments
+    local args=("${remaining_args[@]}")
+    
+    while [[ ${#args[@]} -gt 0 ]]; do
+        case "${args[0]}" in
+            -d|--distribution) DISTRIBUTION="${args[1]}"; args=("${args[@]:2}") ;;
+            -v|--version) VERSION="${args[1]}"; args=("${args[@]:2}") ;;
+            -c|--codename) CODENAME="${args[1]}"; args=("${args[@]:2}") ;;
+            -a|--arch) ARCH="${args[1]}"; args=("${args[@]:2}") ;;
+            -p|--pool) POOL_NAME="${args[1]}"; args=("${args[@]:2}") ;;
+            --profile) INSTALL_PROFILE="${args[1]}"; args=("${args[@]:2}") ;;
+            -t|--tags) ANSIBLE_TAGS="${args[1]}"; args=("${args[@]:2}") ;;
+            -l|--limit) ANSIBLE_LIMIT="${args[1]}"; args=("${args[@]:2}") ;;
+            --snapshots) CREATE_SNAPSHOTS=true; args=("${args[@]:1}") ;;
+            --no-snapshots) CREATE_SNAPSHOTS=false; args=("${args[@]:1}") ;;
+            --restart) FORCE_RESTART=true; args=("${args[@]:1}") ;;
             -h|--help) show_usage ;;
-            -*) die "Unknown option: $1" ;;
+            -*) die "Unknown option: ${args[0]}" ;;
             *)
                 if [[ -z "$BUILD_NAME" ]]; then
-                    BUILD_NAME="$1"
+                    BUILD_NAME="${args[0]}"
                 elif [[ -z "$HOSTNAME" ]]; then
-                    HOSTNAME="$1"
+                    HOSTNAME="${args[0]}"
                 else
                     die "Too many arguments. Expected BUILD_NAME and HOSTNAME."
                 fi
-                shift
+                args=("${args[@]:1}")
                 ;;
         esac
     done
@@ -120,31 +125,40 @@ parse_args() {
 
 # --- Prerequisite Checks ---
 check_prerequisites() {
-    log_info "Performing prerequisite checks..."
+    log_operation_start "Prerequisite validation"
 
+    # Validate input arguments
     if [[ -z "$BUILD_NAME" || -z "$HOSTNAME" ]]; then
         show_usage
         die "Missing required arguments: BUILD_NAME and HOSTNAME."
     fi
+    
+    validate_build_name "$BUILD_NAME" "build name"
+    validate_hostname "$HOSTNAME"
+    validate_architecture "$ARCH"
+    validate_distribution "$DISTRIBUTION"
+    
+    if [[ -n "$INSTALL_PROFILE" ]]; then
+        validate_install_profile "$INSTALL_PROFILE"
+    fi
 
-    local host_vars_file
-    host_vars_file="$(dirname "$script_dir")/config/host_vars/${HOSTNAME}.yml"
+    # Validate global configuration (includes external dependencies)
+    validate_global_config
+
+    # Check for required system commands with install hints
+    require_command "docker" "Docker is required for base OS installation"
+    require_command "systemd-nspawn" "systemd-nspawn is required for configuration"
+    require_command "ansible-playbook" "Ansible is required for system configuration"
+    
+    # Check host variables file exists
+    local host_vars_file="$project_dir/config/host_vars/${HOSTNAME}.yml"
     if [[ ! -f "$host_vars_file" ]]; then
-        die "Ansible host_vars file not found for '$HOSTNAME' at '$host_vars_file'."
+        die_with_context \
+            "Host variables file not found: $host_vars_file" \
+            "Create the file with: cp examples/host_vars/ubuntu-minimal.yml config/host_vars/${HOSTNAME}.yml"
     fi
 
-    # Check for required helper scripts in the same directory
-    require_command "$script_dir/manage-root-datasets.sh"
-    require_command "$script_dir/install-root-os.sh"
-    require_command "$script_dir/configure-root-os.sh"
-    if [[ "$CREATE_SNAPSHOTS" == true ]]; then
-        require_command "$script_dir/manage-root-snapshots.sh"
-    fi
-
-    # Check for system dependencies
-    check_zfs_pool "$POOL_NAME"
-    check_docker
-    log_info "All prerequisite checks passed."
+    log_operation_end "Prerequisite validation"
 }
 
 # --- Helper to create snapshots ---
@@ -155,17 +169,7 @@ take_snapshot() {
     fi
 
     log_info "Creating snapshot for stage: $stage"
-    local snapshot_args=(
-        "--pool" "$POOL_NAME"
-        "create"
-        "$BUILD_NAME"
-        "$stage"
-    )
-    [[ "$VERBOSE" == true ]] && snapshot_args+=("--verbose")
-    [[ "$DRY_RUN" == true ]] && snapshot_args+=("--dry-run")
-    [[ "$DEBUG" == true ]] && snapshot_args+=("--debug")
-
-    run_cmd "$script_dir/manage-root-snapshots.sh" "${snapshot_args[@]}"
+    invoke_script "manage-root-snapshots.sh" "--pool" "$POOL_NAME" "create" "$BUILD_NAME" "$stage"
 }
 
 # --- Helper to manage build status ---
@@ -173,11 +177,6 @@ set_build_status() {
     local status="$1"
     log_debug "Setting build status to: $status"
     run_cmd "$script_dir/manage-build-status.sh" set "$status" "$BUILD_NAME"
-}
-
-log_build_event() {
-    local message="$1"
-    run_cmd "$script_dir/manage-build-status.sh" log "$BUILD_NAME" "$message"
 }
 
 check_build_status() {
@@ -195,11 +194,20 @@ clear_build_status() {
 
 # --- Main Build Logic ---
 main() {
+    # Set up cleanup handling
+    setup_cleanup_trap
+    
     parse_args "$@"
     check_prerequisites
 
     # Define container name used throughout the build process
     container_name="${BUILD_NAME}"
+
+    # Set up build-specific logging context
+    set_build_log_context "$BUILD_NAME"
+
+    # Add cleanup for container if created
+    add_cleanup "cleanup_container"
 
     # Resolve distribution version and codename
     resolve_dist_info "$DISTRIBUTION" "$VERSION" "$CODENAME"
@@ -209,22 +217,23 @@ main() {
         ANSIBLE_LIMIT="$HOSTNAME"
     fi
 
-    log_info "Starting build process with the following settings:"
-    log_info "  Build Name:     $BUILD_NAME"
-    log_info "  Target Host:    $HOSTNAME"
-    log_info "  ZFS Pool:       $POOL_NAME"
-    log_info "  Distribution:   $DISTRIBUTION"
-    log_info "  Version:        $DIST_VERSION"
-    log_info "  Codename:       $DIST_CODENAME"
-    log_info "  Architecture:   $ARCH"
-    log_info "  Ansible Tags:   ${ANSIBLE_TAGS:-'(none)'}"
-    log_info "  Ansible Limit:  $ANSIBLE_LIMIT"
-    log_info "  Snapshots:      $CREATE_SNAPSHOTS"
-    log_info "  Force Restart:  $FORCE_RESTART"
-    log_info "  Dry Run:        $DRY_RUN"
+    log_operation_start "ZFS root build for '$BUILD_NAME'"
+    log_info "Build settings:"
+    log_info "  🏗️  Build Name:     $BUILD_NAME"
+    log_info "  🖥️  Target Host:    $HOSTNAME"
+    log_info "  💾 ZFS Pool:       $POOL_NAME"
+    log_info "  🐧 Distribution:   $DISTRIBUTION"
+    log_info "  📊 Version:        $DIST_VERSION"
+    log_info "  📋 Codename:       $DIST_CODENAME"
+    log_info "  🏗️  Architecture:   $ARCH"
+    log_info "  🎯 Ansible Tags:   ${ANSIBLE_TAGS:-'(none)'}"
+    log_info "  🎭 Ansible Limit:  $ANSIBLE_LIMIT"
+    log_info "  📸 Snapshots:      $CREATE_SNAPSHOTS"
+    log_info "  🔄 Force Restart:  $FORCE_RESTART"
+    log_info "  🧪 Dry Run:        $DRY_RUN"
 
-    # Log build start
-    log_build_event "Build initiated: $DISTRIBUTION $DIST_VERSION ($ARCH) -> hostname '$HOSTNAME' on pool '$POOL_NAME'"
+    # Log build start (this goes to both console and file)
+    log_build_event "Build initiated: $DISTRIBUTION $DIST_VERSION ($ARCH) → hostname '$HOSTNAME' on pool '$POOL_NAME'"
 
     # Check current build status
     local current_status
@@ -245,28 +254,21 @@ main() {
 
     # --- STAGE 1: Create ZFS Datasets ---
     if should_run_stage "datasets-created"; then
-        log_info "Stage 1: Creating ZFS root dataset..."
+        log_step 1 6 "Creating ZFS root dataset"
         log_build_event "Starting Stage 1: Creating ZFS datasets for distribution $DISTRIBUTION $DIST_VERSION"
-        local zfs_script_args=(
-            "--pool" "$POOL_NAME"
-            "create"
-            "$BUILD_NAME"
-        )
-        [[ "$VERBOSE" == true ]] && zfs_script_args+=("--verbose")
-        [[ "$DRY_RUN" == true ]] && zfs_script_args+=("--dry-run")
-        [[ "$DEBUG" == true ]] && zfs_script_args+=("--debug")
-
-        run_cmd "$script_dir/manage-root-datasets.sh" "${zfs_script_args[@]}"
+        
+        invoke_script "manage-root-datasets.sh" "--pool" "$POOL_NAME" "create" "$BUILD_NAME"
+        
         set_build_status "datasets-created"
         log_build_event "Completed Stage 1: ZFS datasets created successfully"
         take_snapshot "1-datasets-created"
     else
-        log_info "Stage 1: Skipping ZFS dataset creation (already completed)"
+        log_info "📋 Step 1/6: ZFS dataset creation (already completed)"
     fi
 
     # --- STAGE 2: Install Base OS ---
     if should_run_stage "os-installed"; then
-        log_info "Stage 2: Installing base operating system..."
+        log_step 2 6 "Installing base operating system"
         log_build_event "Starting Stage 2: Installing $DISTRIBUTION $DIST_VERSION base OS on $ARCH architecture"
         
         # If we're rerunning Stage 2 (i.e., datasets already exist but OS install failed),
@@ -274,22 +276,13 @@ main() {
         local current_status
         current_status=$(check_build_status)
         if [[ "$current_status" == "datasets-created" ]]; then
-            log_info "Rolling back to clean state before OS installation..."
-            # Use the simplified rollback to stage 1 snapshot
-            local rollback_args=(
-                "--pool" "$POOL_NAME"
-                "rollback"
-                "$BUILD_NAME"
-                "build-stage-1-datasets-created"
-            )
-            [[ "$VERBOSE" == true ]] && rollback_args+=("--verbose")
-            [[ "$DRY_RUN" == true ]] && rollback_args+=("--dry-run")
-            [[ "$DEBUG" == true ]] && rollback_args+=("--debug")
+            log_build_warn "Rolling back to clean state before OS installation"
+            invoke_script "manage-root-snapshots.sh" "--pool" "$POOL_NAME" "rollback" "$BUILD_NAME" "build-stage-1-datasets-created"
             
-            if run_cmd "$script_dir/manage-root-snapshots.sh" "${rollback_args[@]}"; then
-                log_info "Successfully rolled back to stage 1 snapshot"
+            if [[ $? -eq 0 ]]; then
+                log_build_info "Successfully rolled back to stage 1 snapshot"
             else
-                log_warn "Failed to rollback to stage 1 snapshot, proceeding with current state"
+                log_build_warn "Failed to rollback to stage 1 snapshot, proceeding with current state"
             fi
         fi
         
@@ -302,9 +295,7 @@ main() {
             "$BUILD_NAME"
         )
         [[ -n "$INSTALL_PROFILE" ]] && os_install_args+=("--profile" "$INSTALL_PROFILE")
-        [[ "$VERBOSE" == true ]] && os_install_args+=("--verbose")
-        [[ "$DRY_RUN" == true ]] && os_install_args+=("--dry-run")
-        [[ "$DEBUG" == true ]] && os_install_args+=("--debug")
+        add_common_flags os_install_args
 
         run_cmd "$script_dir/install-root-os.sh" "${os_install_args[@]}"
         set_build_status "os-installed"
@@ -318,16 +309,9 @@ main() {
     if should_run_stage "varlog-mounted"; then
         log_info "Stage 3: Mounting varlog dataset..."
         log_build_event "Starting Stage 3: Mounting varlog dataset for persistent logging"
-        local varlog_args=(
-            "--pool" "$POOL_NAME"
-            "mount-varlog"
-            "$BUILD_NAME"
-        )
-        [[ "$VERBOSE" == true ]] && varlog_args+=("--verbose")
-        [[ "$DRY_RUN" == true ]] && varlog_args+=("--dry-run")
-        [[ "$DEBUG" == true ]] && varlog_args+=("--debug")
-
-        run_cmd "$script_dir/manage-root-datasets.sh" "${varlog_args[@]}"
+        
+        invoke_script "manage-root-datasets.sh" "--pool" "$POOL_NAME" "mount-varlog" "$BUILD_NAME"
+        
         set_build_status "varlog-mounted"
         log_build_event "Completed Stage 3: Varlog dataset mounted successfully"
         take_snapshot "3-varlog-mounted"
@@ -339,22 +323,11 @@ main() {
     if should_run_stage "container-created"; then
         log_info "Stage 4: Creating container for Ansible execution..."
         log_build_event "Starting Stage 4: Creating systemd-nspawn container '$HOSTNAME' for configuration"
-        local container_args=(
-            "create"
-            "--pool" "$POOL_NAME"
-            "--name" "$container_name"
-            "--hostname" "$HOSTNAME"
-            "--install-packages" "ansible,python3-apt"
-            "$BUILD_NAME"
-        )
-        [[ "$VERBOSE" == true ]] && container_args+=("--verbose")
-        [[ "$DRY_RUN" == true ]] && container_args+=("--dry-run")
-        [[ "$DEBUG" == true ]] && container_args+=("--debug")
         
-        run_cmd "$script_dir/manage-root-containers.sh" "${container_args[@]}"
+        invoke_script "manage-root-containers.sh" "create" "--pool" "$POOL_NAME" "--name" "$container_name" "--hostname" "$HOSTNAME" "--install-packages" "ansible,python3-apt" "$BUILD_NAME"
         
         # Start the container
-        run_cmd "$script_dir/manage-root-containers.sh" start --name "$container_name" "$BUILD_NAME"
+        invoke_script "manage-root-containers.sh" "start" "--name" "$container_name" "$BUILD_NAME"
         
         set_build_status "container-created"
         log_build_event "Completed Stage 4: Container created and started successfully"
@@ -392,9 +365,7 @@ main() {
             "$HOSTNAME"
         )
         [[ -n "$ANSIBLE_TAGS" ]] && ansible_args+=("--tags" "$ANSIBLE_TAGS")
-        [[ "$VERBOSE" == true ]] && ansible_args+=("--verbose")
-        [[ "$DRY_RUN" == true ]] && ansible_args+=("--dry-run")
-        [[ "$DEBUG" == true ]] && ansible_args+=("--debug")
+        add_common_flags ansible_args
 
         run_cmd "$script_dir/configure-root-os.sh" "${ansible_args[@]}"
         set_build_status "ansible-configured"
@@ -410,7 +381,7 @@ main() {
         log_build_event "Starting Stage 6: Finalizing build and cleaning up resources"
         
         # Stop and destroy the container
-        run_cmd "$script_dir/manage-root-containers.sh" destroy --name "$container_name" "$BUILD_NAME"
+        invoke_script "manage-root-containers.sh" "destroy" "--name" "$container_name" "$BUILD_NAME"
         
         # Clear the cleanup trap since we're doing it manually
         trap - EXIT
