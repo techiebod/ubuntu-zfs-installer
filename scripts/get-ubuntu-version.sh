@@ -112,9 +112,9 @@ main() {
 
     # Override default logging to be less verbose for CLI use
     _log() { echo "$2"; }
-    log_info() { echo "$@"; }
-    log_error() { echo "Error: $@" >&2; }
-    log_warn() { echo "Warning: $@" >&2; }
+    log_info() { echo "$*"; }
+    log_error() { echo "Error: $*" >&2; }
+    log_warn() { echo "Warning: $*" >&2; }
     log_debug() { return 0; } # Disable debug logging for CLI
 
     # Parse command line arguments

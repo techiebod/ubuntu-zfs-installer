@@ -18,8 +18,14 @@ set -o nounset
 set -o pipefail
 
 # --- Determine Project Structure ---
-readonly CORE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly PROJECT_ROOT="$(dirname "$CORE_LIB_DIR")"
+declare CORE_LIB_DIR
+CORE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly CORE_LIB_DIR
+
+declare PROJECT_ROOT
+PROJECT_ROOT="$(dirname "$CORE_LIB_DIR")"
+readonly PROJECT_ROOT
+
 readonly GLOBAL_CONFIG_FILE="$PROJECT_ROOT/config/global.conf"
 
 # ==============================================================================
@@ -65,10 +71,10 @@ readonly LOG_LEVEL
 
 # --- Global State Variables ---
 # These are intended to be set by the calling script via argument parsing
-VERBOSE=false
-DRY_RUN=false
-DEBUG=false
-LOG_WITH_TIMESTAMPS=true
+export VERBOSE=false
+export DRY_RUN=false
+export DEBUG=false
+export LOG_WITH_TIMESTAMPS=true
 
 # ==============================================================================
 # MODULAR LIBRARY LOADING
@@ -162,7 +168,7 @@ log_debug "Libraries loaded: logging, dependencies, validation, execution, recov
 setup_cleanup_trap
 
 # Initialize completed operations tracking
-declare -gA COMPLETED_OPERATIONS=()
+declare -gAx COMPLETED_OPERATIONS=()
 
 # ==============================================================================
 # BACKWARD COMPATIBILITY HELPERS
@@ -186,3 +192,8 @@ log_debug "Core library loading completed successfully"
 export PROJECT_ROOT
 export CORE_LIB_DIR
 export GLOBAL_CONFIG_FILE
+
+# Export configuration defaults for shellcheck compatibility
+export DEFAULT_DISTRIBUTION DEFAULT_POOL_NAME DEFAULT_ROOT_DATASET
+export DEFAULT_MOUNT_BASE DEFAULT_ARCH DEFAULT_VARIANT DEFAULT_DOCKER_IMAGE
+export STATUS_DIR LOG_LEVEL

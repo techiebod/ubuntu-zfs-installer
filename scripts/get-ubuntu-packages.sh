@@ -140,7 +140,8 @@ parse_seed_content() {
         
         all_packages="$all_packages$seed_packages"$'\n'
         
-        local package_count=$(echo "$seed_packages" | wc -w)
+        local package_count
+        package_count=$(echo "$seed_packages" | wc -w)
         [[ "$VERBOSE" == "true" ]] && log_info "Extracted $package_count packages from $seed_name"
     done
     
@@ -148,7 +149,8 @@ parse_seed_content() {
     declare -g FINAL_PACKAGES
     FINAL_PACKAGES=$(echo "$all_packages" | sort -u | grep -v '^[[:space:]]*$')
     
-    local total_count=$(echo "$FINAL_PACKAGES" | wc -l)
+    local total_count
+    total_count=$(echo "$FINAL_PACKAGES" | wc -l)
     [[ "$VERBOSE" == "true" ]] && log_info "Total unique packages: $total_count"
     
     return 0

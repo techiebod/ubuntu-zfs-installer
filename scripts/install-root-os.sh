@@ -149,7 +149,8 @@ zfs-initramfs"
     local keyring_packages="ubuntu-keyring"
     
     # Combine all packages
-    local all_packages=$(echo -e "$base_packages\n$zfs_packages\n$keyring_packages" | sort -u | tr '\n' ',' | sed 's/,$//')
+    local all_packages
+    all_packages=$(echo -e "$base_packages\n$zfs_packages\n$keyring_packages" | sort -u | tr '\n' ',' | sed 's/,$//')
     
     log_debug "Final package list: $all_packages"
     echo "$all_packages"

@@ -27,7 +27,7 @@ fi
 # Usage: require_command "docker" "Docker is required" "sudo apt install docker.io"
 require_command() {
     local cmd="$1"
-    local description="${2:-Command '$cmd' is required}"
+    # local description="${2:-Command '$cmd' is required}"  # Currently unused
     local install_hint="${3:-}"
     
     if ! command -v "$cmd" &>/dev/null; then

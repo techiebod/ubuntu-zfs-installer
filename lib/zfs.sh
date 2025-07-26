@@ -326,7 +326,7 @@ zfs_list_snapshots() {
     local list_args=("-t" "snapshot" "-o" "name" "-S" "creation" "-H" "$dataset")
     
     local snapshots
-    snapshots=($(zfs list "${list_args[@]}" 2>/dev/null))
+    mapfile -t snapshots < <(zfs list "${list_args[@]}" 2>/dev/null)
     
     if [[ -n "$pattern" ]]; then
         printf '%s\n' "${snapshots[@]}" | grep "$pattern" || true
@@ -345,7 +345,7 @@ zfs_cleanup_old_snapshots() {
     log_debug "Cleaning up old snapshots for $dataset (pattern: $pattern, keep: $keep_count)"
     
     local snapshots
-    snapshots=($(zfs_list_snapshots "$dataset" "$pattern"))
+    mapfile -t snapshots < <(zfs_list_snapshots "$dataset" "$pattern")
     
     if [[ ${#snapshots[@]} -le $keep_count ]]; then
         log_debug "Only ${#snapshots[@]} snapshots found, no cleanup needed"

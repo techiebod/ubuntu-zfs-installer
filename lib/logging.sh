@@ -51,6 +51,7 @@ clear_build_log_context() {
 }
 
 # Get the log file path for current build context
+# shellcheck disable=SC2120  # Optional parameter usage is intentional
 get_build_log_file() {
     local build_name="${1:-$BUILD_LOG_CONTEXT}"
     if [[ -n "$build_name" ]]; then

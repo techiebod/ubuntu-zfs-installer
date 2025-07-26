@@ -37,7 +37,7 @@ readonly VALID_STATUSES=(
 )
 
 # Status progression map - what comes next after each status
-declare -gA STATUS_PROGRESSION=(
+declare -gAx STATUS_PROGRESSION=(
     ["$STATUS_STARTED"]="$STATUS_DATASETS_CREATED"
     ["$STATUS_DATASETS_CREATED"]="$STATUS_OS_INSTALLED"
     ["$STATUS_OS_INSTALLED"]="$STATUS_VARLOG_MOUNTED"
@@ -76,7 +76,7 @@ readonly VALID_INSTALL_PROFILES=(
 )
 
 # Ubuntu package seeds for each profile
-declare -gA PROFILE_SEEDS=(
+declare -gAx PROFILE_SEEDS=(
     ["$INSTALL_PROFILE_MINIMAL"]="server-minimal"
     ["$INSTALL_PROFILE_STANDARD"]="server-minimal ship"
     ["$INSTALL_PROFILE_FULL"]="server-minimal server"
@@ -97,13 +97,13 @@ readonly VALID_ARCHITECTURES=(
 )
 
 # Architecture-specific package mappings
-declare -gA ARCH_KERNEL_PACKAGES=(
+declare -gAx ARCH_KERNEL_PACKAGES=(
     ["$ARCH_AMD64"]="linux-image-amd64"
     ["$ARCH_ARM64"]="linux-image-arm64"
     ["$ARCH_I386"]="linux-image-686"
 )
 
-declare -gA ARCH_GRUB_PACKAGES=(
+declare -gAx ARCH_GRUB_PACKAGES=(
     ["$ARCH_AMD64"]="grub-efi-amd64 grub-efi-amd64-bin grub-efi-amd64-signed"
     ["$ARCH_ARM64"]="grub-efi-arm64 grub-efi-arm64-bin"
     ["$ARCH_I386"]="grub-efi-ia32 grub-efi-ia32-bin"
@@ -122,12 +122,12 @@ readonly VALID_DISTRIBUTIONS=(
 )
 
 # Distribution-specific configuration
-declare -gA DISTRO_DOCKER_IMAGES=(
+declare -gAx DISTRO_DOCKER_IMAGES=(
     ["$DISTRO_UBUNTU"]="ubuntu:latest"
     ["$DISTRO_DEBIAN"]="debian:latest"
 )
 
-declare -gA DISTRO_PACKAGE_TOOLS=(
+declare -gAx DISTRO_PACKAGE_TOOLS=(
     ["$DISTRO_UBUNTU"]="apt"
     ["$DISTRO_DEBIAN"]="apt"
 )
@@ -183,7 +183,33 @@ readonly EXIT_TIMEOUT_ERROR=7
 # TIMEOUT VALUES (in seconds)
 # ==============================================================================
 
-readonly DEFAULT_CONTAINER_TIMEOUT=60
-readonly DEFAULT_CONTAINER_STOP_TIMEOUT=10
-readonly DEFAULT_NETWORK_TIMEOUT=30
-readonly DEFAULT_ZFS_OPERATION_TIMEOUT=300
+export DEFAULT_CONTAINER_TIMEOUT=60
+export DEFAULT_CONTAINER_STOP_TIMEOUT=10
+export DEFAULT_NETWORK_TIMEOUT=30
+export DEFAULT_ZFS_OPERATION_TIMEOUT=300
+
+readonly DEFAULT_CONTAINER_TIMEOUT
+readonly DEFAULT_CONTAINER_STOP_TIMEOUT
+readonly DEFAULT_NETWORK_TIMEOUT
+readonly DEFAULT_ZFS_OPERATION_TIMEOUT
+
+# ==============================================================================
+# EXPLICIT EXPORTS FOR SHELLCHECK COMPATIBILITY
+# ==============================================================================
+# Export all constants that should be available to other scripts
+# This ensures shellcheck recognizes them as intentionally exported
+
+export VALID_STATUSES
+export SNAPSHOT_PREFIX SNAPSHOT_TIMESTAMP_FORMAT
+export SNAPSHOT_DATASETS_CREATED SNAPSHOT_OS_INSTALLED SNAPSHOT_VARLOG_MOUNTED
+export SNAPSHOT_CONTAINER_CREATED SNAPSHOT_ANSIBLE_CONFIGURED
+export VALID_INSTALL_PROFILES VALID_ARCHITECTURES VALID_DISTRIBUTIONS
+export GRUB_PACKAGES_TO_HOLD ESSENTIAL_PACKAGES
+export UBUNTU_SEEDS_BASE_URL UBUNTU_API_BASE_URL
+export STATUS_FILE_SUFFIX BUILD_LOG_SUFFIX CONTAINER_NAME_PREFIX
+export BUILD_NAME_PATTERN BUILD_NAME_MAX_LENGTH
+export HOSTNAME_PATTERN HOSTNAME_MAX_LENGTH
+export EXIT_SUCCESS EXIT_GENERAL_ERROR EXIT_INVALID_ARGS EXIT_MISSING_DEPS
+export EXIT_CONFIG_ERROR EXIT_PERMISSION_ERROR EXIT_NETWORK_ERROR EXIT_TIMEOUT_ERROR
+export DEFAULT_CONTAINER_TIMEOUT DEFAULT_CONTAINER_STOP_TIMEOUT
+export DEFAULT_NETWORK_TIMEOUT DEFAULT_ZFS_OPERATION_TIMEOUT

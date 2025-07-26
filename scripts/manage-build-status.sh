@@ -25,11 +25,7 @@ source "$lib_dir/containers.sh"      # For container operations (used in clean c
 # --- Constants ---
 # Constants are now loaded from lib/constants.sh
 
-# Status progression map - imported from constants.sh as STATUS_PROGRESSION
-declare -A NEXT_STATUS=()
-for status in "${!STATUS_PROGRESSION[@]}"; do
-    NEXT_STATUS["$status"]="${STATUS_PROGRESSION[$status]}"
-done
+# Status progression is available via STATUS_PROGRESSION from constants.sh
 
 # --- Functions ---
 # Status file and log file path helpers now use library functions

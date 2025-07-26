@@ -108,7 +108,7 @@ build_get_status() {
     
     # Extract status from last entry
     local parsed
-    parsed=($(build_parse_status_line "$last_entry"))
+    read -ra parsed < <(build_parse_status_line "$last_entry")
     echo "${parsed[1]}"
 }
 
@@ -124,7 +124,7 @@ build_get_status_timestamp() {
     
     # Extract timestamp from last entry
     local parsed
-    parsed=($(build_parse_status_line "$last_entry"))
+    read -ra parsed < <(build_parse_status_line "$last_entry")
     echo "${parsed[0]}"
 }
 
@@ -239,7 +239,7 @@ build_list_all_with_status() {
         local last_entry
         if last_entry=$(build_get_last_status_entry "$build_name"); then
             local parsed
-            parsed=($(build_parse_status_line "$last_entry"))
+            read -ra parsed < <(build_parse_status_line "$last_entry")
             local timestamp="${parsed[0]}"
             local status="${parsed[1]}"
             local message="${parsed[2]:-}"
@@ -315,7 +315,7 @@ build_show_details() {
         
         # List snapshots
         local snapshots
-        snapshots=($(zfs_list_snapshots "$dataset" "$SNAPSHOT_PREFIX" 2>/dev/null))
+        mapfile -t snapshots < <(zfs_list_snapshots "$dataset" "$SNAPSHOT_PREFIX" 2>/dev/null)
         if [[ ${#snapshots[@]} -gt 0 ]]; then
             echo "  Snapshots: ${#snapshots[@]} found"
         else
@@ -362,7 +362,7 @@ build_show_history() {
         if [[ -z "$line" ]]; then continue; fi
         
         local parsed
-        parsed=($(build_parse_status_line "$line"))
+        read -ra parsed < <(build_parse_status_line "$line")
         local timestamp="${parsed[0]}"
         local status="${parsed[1]}"
         local message="${parsed[2]:-}"
@@ -473,7 +473,7 @@ build_set_logging_context() {
     local build_name="$1"
     
     # This sets the global BUILD_LOG_CONTEXT variable used by the logging system
-    BUILD_LOG_CONTEXT="$build_name"
+    export BUILD_LOG_CONTEXT="$build_name"
     
     log_debug "Build logging context set to: $build_name"
 }

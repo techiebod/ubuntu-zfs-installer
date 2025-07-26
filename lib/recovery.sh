@@ -236,7 +236,8 @@ clear_rollback_stack() {
 save_state() {
     local state_name="$1"
     local description="${2:-Saved state: $state_name}"
-    local state_file="${STATUS_DIR:-/tmp}/state_${state_name}_$(date +%s).json"
+    local state_file
+    state_file="${STATUS_DIR:-/tmp}/state_${state_name}_$(date +%s).json"
     
     log_debug "Saving state: $description"
     

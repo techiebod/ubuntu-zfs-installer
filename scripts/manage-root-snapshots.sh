@@ -109,7 +109,7 @@ cleanup_old_snapshots() {
 
     local pattern="${dataset}@${SNAPSHOT_PREFIX}-${stage_name}"
     local snapshots
-    snapshots=($(zfs list -t snapshot -o name -S creation -H "$dataset" 2>/dev/null | grep "$pattern"))
+    mapfile -t snapshots < <(zfs list -t snapshot -o name -S creation -H "$dataset" 2>/dev/null | grep "$pattern")
 
     if [[ ${#snapshots[@]} -le $keep_count ]]; then
         log_info "Only ${#snapshots[@]} snapshots found, no cleanup needed."
@@ -182,7 +182,7 @@ EOF
 # --- Main function ---
 main() {
     # For list action, disable timestamps for cleaner output
-    [[ "${1:-}" == "list" ]] && LOG_WITH_TIMESTAMPS=false
+    [[ "${1:-}" == "list" ]] && export LOG_WITH_TIMESTAMPS=false
 
     local remaining_args=()
     

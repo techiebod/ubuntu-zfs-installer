@@ -43,7 +43,9 @@ ANSIBLE_TAGS=""
 ANSIBLE_LIMIT=""
 # --- Configuration ---
 DRY_RUN=false
+# shellcheck disable=SC2034  # Set by argument parsing, used by common functions
 VERBOSE=false
+# shellcheck disable=SC2034  # Set by argument parsing, used by common functions
 DEBUG=false
 CREATE_SNAPSHOTS=true
 FORCE_RESTART=false

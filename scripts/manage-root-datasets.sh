@@ -191,7 +191,7 @@ destroy_dataset() {
     # Check for running containers that might be using this dataset
     local container_name="${build_name}"
     # Use the container management script to check if container is running
-    if "$script_dir/manage-root-containers.sh" list 2>/dev/null | grep -q "^$container_name[[:space:]]"; then
+    if "$script_dir/manage-root-containers.sh" list 2>/dev/null | grep -q "^${container_name}[[:space:]]"; then
         log_error "Container '$container_name' is currently running and using this dataset."
         log_info "Please stop the container first using:"
         log_info "  $script_dir/manage-root-containers.sh stop --name '$container_name' '$build_name'"
@@ -379,6 +379,7 @@ main() {
     case "$ACTION" in
         list)
             # For interactive use, disable timestamps for cleaner output
+            # shellcheck disable=SC2034  # Used by logging system
             LOG_WITH_TIMESTAMPS=false
             list_root_datasets
             ;;

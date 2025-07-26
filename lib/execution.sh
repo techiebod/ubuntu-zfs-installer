@@ -2,7 +2,10 @@
 #
 # Execution Library
 #
-# This library provides command execution, argument parsing, and script
+# This library provides command execu    "$@" >"$output_file" 2>&1 || status=$?
+    export RUN_QUIET_OUTPUT
+    RUN_QUIET_OUTPUT=$(cat "$output_file")
+    rm -f "$output_file"n, argument parsing, and script
 # invocation functionality. It handles verbose/dry-run modes, command
 # output management, and common argument processing.
 
