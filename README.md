@@ -47,13 +47,22 @@ This system creates **ZFS Boot Environments** - complete, independent Ubuntu ins
 - **`manage-build-status.sh`** — Build status tracking and resumability management
 - **`get-ubuntu-version.sh`** — Ubuntu release validation and version/codename mapping utility
 - **`get-ubuntu-packages.sh`** — Ubuntu package list generation with blacklist filtering
-- **`lib/common.sh`** — Shared functionality and smart distribution validation
+- **`lib/core.sh`** — Core initialization and modular library loading
 
 ### ZFS Dataset Structure
 
 ```
+```
 {pool}/ROOT/{codename}         → Build environment root
 {pool}/ROOT/{codename}/varlog  → Separate /var/log dataset for log management
+```
+
+Where `{pool}` defaults to `zroot` and `ROOT` is configurable via `DEFAULT_ROOT_DATASET` in `config/global.conf`.
+
+Example mapping:
+```
+zroot/ROOT/plucky        → /var/tmp/zfs-builds/plucky
+zroot/ROOT/plucky/varlog → /var/tmp/zfs-builds/plucky/var/log
 ```
 
 Example for Ubuntu 25.04 "plucky":
@@ -126,7 +135,7 @@ sudo ./scripts/build-new-root.sh --no-snapshots --verbose --codename plucky pluc
 
 Snapshots follow the pattern: `build-stage-{stage}-{timestamp}`
 
-Example: `zroot/ROOT/plucky@build-stage-2-os-installed-20250723-143022`
+Example: `zroot/{DEFAULT_ROOT_DATASET}/plucky@build-stage-2-os-installed-20250723-143022`
 
 ### Snapshot Management
 
@@ -275,8 +284,10 @@ noble        /                    2.1G     (current system)     156M
 plucky       legacy               1.8G     (in-progress build)  89M
 jammy        /                    1.9G     (boot option)        234M
 
-zpool bootfs: zroot/ROOT/noble
-Actually mounted as /: zroot/ROOT/noble
+```
+zpool bootfs: zroot/{DEFAULT_ROOT_DATASET}/noble
+Actually mounted as /: zroot/{DEFAULT_ROOT_DATASET}/noble
+```
 Pool available space: 45.2G
 ```
 
@@ -337,7 +348,7 @@ The system handles mmdebstrap's requirement for empty directories elegantly:
 The build process is now **resumable** with automatic status tracking:
 
 1. **Dataset Creation** (`manage-root-datasets.sh`)
-   - Creates `{pool}/ROOT/{codename}` and `{pool}/ROOT/{codename}/varlog`
+   - Creates `{pool}/{DEFAULT_ROOT_DATASET}/{codename}` and `{pool}/{DEFAULT_ROOT_DATASET}/{codename}/varlog`
    - Sets `mountpoint=legacy` for build safety
    - Status: `datasets-created`
 
@@ -397,8 +408,10 @@ When ready to use the new boot environment:
 
 ```bash
 # Set as boot default
-sudo zfs set mountpoint=/ zroot/ROOT/plucky-build
-sudo zpool set bootfs=zroot/ROOT/plucky-build zroot
+```bash
+sudo zfs set mountpoint=/ zroot/{DEFAULT_ROOT_DATASET}/plucky-build
+sudo zpool set bootfs=zroot/{DEFAULT_ROOT_DATASET}/plucky-build zroot
+```
 
 # Reboot and select from GRUB menu
 sudo reboot
@@ -420,7 +433,7 @@ sudo reboot
 │   ├── get-ubuntu-version.sh  # Ubuntu release utility
 │   └── get-ubuntu-packages.sh # Ubuntu package list generation
 ├── lib/
-│   └── common.sh              # Shared functionality
+│   └── core.sh                # Core initialization and library loading
 ├── config/
 │   ├── global.conf            # System-wide configuration
 │   ├── host_vars/             # Per-machine configuration
@@ -608,8 +621,10 @@ sudo ./scripts/manage-root-datasets.sh list
 sudo ./scripts/manage-root-snapshots.sh list plucky-build
 
 # Rollback to previous environment
-sudo zfs set mountpoint=/ zroot/ROOT/noble
-sudo zpool set bootfs=zroot/ROOT/noble zroot
+```bash
+sudo zfs set mountpoint=/ zroot/{DEFAULT_ROOT_DATASET}/noble
+sudo zpool set bootfs=zroot/{DEFAULT_ROOT_DATASET}/noble zroot
+```
 sudo reboot
 
 # Rollback to specific build stage

@@ -8,9 +8,23 @@
 
 # --- Script Setup ---
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-project_dir="$(dirname "$script_dir")"
-# shellcheck source=../lib/common.sh
-source "$project_dir/lib/common.sh"
+lib_dir="$script_dir/../lib"
+PROJECT_ROOT="$(dirname "$script_dir")"
+
+# Load global configuration
+if [[ -f "$PROJECT_ROOT/config/global.conf" ]]; then
+    source "$PROJECT_ROOT/config/global.conf"
+fi
+
+# Load libraries we need
+source "$lib_dir/constants.sh"       # For status constants
+source "$lib_dir/logging.sh"         # For logging functions
+source "$lib_dir/execution.sh"       # For argument parsing and run_cmd
+source "$lib_dir/validation.sh"      # For hostname validation
+source "$lib_dir/dependencies.sh"    # For require_command (ansible)
+source "$lib_dir/zfs.sh"             # For ZFS dataset paths
+source "$lib_dir/containers.sh"      # For container operations
+source "$lib_dir/build-status.sh"    # For build status integration
 
 # --- Script-specific Default values ---
 PLAYBOOK="site.yml"
@@ -97,12 +111,9 @@ parse_args() {
 check_prerequisites() {
     log_info "Performing prerequisite checks for configuration..."
 
-    # Check for required system commands
-    require_command "systemd-nspawn" "systemd-nspawn is required to configure the system."
-
     # Check for required project structure
     local ansible_dir
-    ansible_dir="$project_dir/ansible"
+    ansible_dir="$PROJECT_ROOT/ansible"
     if [[ ! -d "$ansible_dir" ]]; then
         die "Ansible directory not found at '$ansible_dir'."
     fi
@@ -113,14 +124,16 @@ check_prerequisites() {
         die "Inventory file '$INVENTORY' not found in '$ansible_dir'."
     fi
     local host_vars_file
-    host_vars_file="$project_dir/config/host_vars/${HOSTNAME}.yml"
+    host_vars_file="$PROJECT_ROOT/config/host_vars/${HOSTNAME}.yml"
     if [[ ! -f "$host_vars_file" ]]; then
         die "Ansible host_vars file not found for '$HOSTNAME' at '$host_vars_file'."
     fi
 
     # Check that the target dataset exists using the dataset management script
     if ! "$script_dir/manage-root-datasets.sh" --pool "$POOL_NAME" list | grep -q "^${BUILD_NAME}[[:space:]]"; then
-        die "Target dataset '${POOL_NAME}/ROOT/${BUILD_NAME}' does not exist. Use manage-root-datasets.sh to create it first."
+        local dataset
+        dataset=$(zfs_get_root_dataset_path "$POOL_NAME" "$BUILD_NAME")
+        die "Target dataset '$dataset' does not exist. Use manage-root-datasets.sh to create it first."
     fi
 
     log_info "All prerequisite checks passed."
@@ -161,8 +174,8 @@ main() {
 
     # Copy the necessary directories into the staging area.
     log_debug "Copying ansible and config directories to staging area..."
-    run_cmd cp -rT "$project_dir/ansible" "$staging_dir/"
-    run_cmd cp -rT "$project_dir/config" "$staging_dir/config"
+    run_cmd cp -rT "$PROJECT_ROOT/ansible" "$staging_dir/"
+    run_cmd cp -rT "$PROJECT_ROOT/config" "$staging_dir/config"
 
     # Remove the old, incorrect symlinks from the staging area before creating new ones.
     log_debug "Removing original symlinks from staging area..."

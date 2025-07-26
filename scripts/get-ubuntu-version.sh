@@ -3,18 +3,21 @@
 # Command-line wrapper to get Ubuntu release information.
 #
 # This script acts as a CLI for the distribution resolution functions
-# in the common library. It allows for standalone querying of Ubuntu
+# in the modular libraries. It allows for standalone querying of Ubuntu
 # version and codename information.
 
 set -euo pipefail
 
-# Source common library
-# The library provides the core logic for version resolution.
+# Source only the libraries we actually need (modular approach)
 script_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
-# shellcheck source=../lib/common.sh
-source "$script_dir/../lib/common.sh"
+lib_dir="$script_dir/../lib"
 
-# This script defines functions that are not part of the common library
+# Load only what we need - no heavy validation or ZFS libraries
+source "$lib_dir/logging.sh"
+source "$lib_dir/dependencies.sh"
+source "$lib_dir/ubuntu-api.sh"
+
+# This script defines functions that are not part of the core libraries
 # as they are specific to the CLI wrapper (e.g. listing all versions).
 
 # Function to list all Ubuntu versions from the Launchpad API

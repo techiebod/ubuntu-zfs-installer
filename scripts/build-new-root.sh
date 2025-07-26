@@ -7,10 +7,27 @@
 # of the process, from dataset creation to system configuration.
 
 # --- Script Setup ---
-# Source the common library to get access to standardized functions
+# Source modular libraries instead of monolithic approach
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../lib/common.sh
-source "$script_dir/../lib/common.sh"
+lib_dir="$script_dir/../lib"
+PROJECT_ROOT="$(dirname "$script_dir")"
+
+# Load global configuration
+if [[ -f "$PROJECT_ROOT/config/global.conf" ]]; then
+    source "$PROJECT_ROOT/config/global.conf"
+fi
+
+# This is the main orchestration script - load all libraries
+source "$lib_dir/constants.sh"       # For all constants
+source "$lib_dir/logging.sh"         # For logging functions
+source "$lib_dir/execution.sh"       # For argument parsing and script invocation
+source "$lib_dir/validation.sh"      # For input validation
+source "$lib_dir/dependencies.sh"    # For system requirements
+source "$lib_dir/ubuntu-api.sh"      # For distribution resolution
+source "$lib_dir/recovery.sh"        # For cleanup and error handling
+source "$lib_dir/zfs.sh"             # For ZFS operations
+source "$lib_dir/containers.sh"      # For container operations
+source "$lib_dir/build-status.sh"    # For build orchestration
 
 # --- Script-specific Default values ---
 # These are defaults for this script, which can be overridden by command-line args.
@@ -125,7 +142,7 @@ parse_args() {
 
 # --- Prerequisite Checks ---
 check_prerequisites() {
-    log_operation_start "Prerequisite validation"
+    log_debug "Starting prerequisite validation"
 
     # Validate input arguments
     if [[ -z "$BUILD_NAME" || -z "$HOSTNAME" ]]; then
@@ -146,19 +163,18 @@ check_prerequisites() {
     validate_global_config
 
     # Check for required system commands with install hints
-    require_command "docker" "Docker is required for base OS installation"
-    require_command "systemd-nspawn" "systemd-nspawn is required for configuration"
-    require_command "ansible-playbook" "Ansible is required for system configuration"
+    require_command "docker"
+    require_command "systemd-nspawn"
     
     # Check host variables file exists
-    local host_vars_file="$project_dir/config/host_vars/${HOSTNAME}.yml"
+    local host_vars_file="$PROJECT_ROOT/config/host_vars/${HOSTNAME}.yml"
     if [[ ! -f "$host_vars_file" ]]; then
         die_with_context \
             "Host variables file not found: $host_vars_file" \
             "Create the file with: cp examples/host_vars/ubuntu-minimal.yml config/host_vars/${HOSTNAME}.yml"
     fi
 
-    log_operation_end "Prerequisite validation"
+    log_debug "Prerequisite validation completed"
 }
 
 # --- Helper to create snapshots ---

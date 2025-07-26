@@ -5,9 +5,23 @@
 
 # --- Script Setup ---
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-project_dir="$(dirname "$script_dir")"
-# shellcheck source=../lib/common.sh
-source "$project_dir/lib/common.sh"
+lib_dir="$script_dir/../lib"
+PROJECT_ROOT="$(dirname "$script_dir")"
+
+# Load global configuration
+if [[ -f "$PROJECT_ROOT/config/global.conf" ]]; then
+    source "$PROJECT_ROOT/config/global.conf"
+fi
+
+# Load libraries we need
+source "$lib_dir/constants.sh"       # For status constants
+source "$lib_dir/logging.sh"         # For logging functions
+source "$lib_dir/execution.sh"       # For argument parsing and run_cmd
+source "$lib_dir/validation.sh"      # For build name validation
+source "$lib_dir/dependencies.sh"    # For require_command (systemd-nspawn)
+source "$lib_dir/zfs.sh"             # For ZFS operations (mount paths)
+source "$lib_dir/containers.sh"      # For container operations (primary functionality)
+source "$lib_dir/build-status.sh"    # For build status integration
 
 # --- Script-specific Default values ---
 ACTION=""
@@ -130,236 +144,66 @@ parse_args() {
 
 # --- Container Management Functions ---
 
+# Helper functions now use container library
 get_mount_point() {
-    local mount_point
-    mount_point=$(zfs get -H -o value mountpoint "${POOL_NAME}/ROOT/${BUILD_NAME}")
-    if [[ "$mount_point" == "none" || "$mount_point" == "legacy" ]]; then
-        mount_point="${DEFAULT_MOUNT_BASE}/${BUILD_NAME}"
-    fi
-    echo "$mount_point"
+    container_get_mount_point "$POOL_NAME" "$BUILD_NAME"
 }
 
 check_dataset_exists() {
-    local dataset="${POOL_NAME}/ROOT/${BUILD_NAME}"
-    if ! zfs list -H -o name "$dataset" &>/dev/null; then
-        die "Target dataset '$dataset' does not exist."
-    fi
+    container_validate_dataset "$POOL_NAME" "$BUILD_NAME"
 }
 
 is_container_running() {
     local name="$1"
-    machinectl show "$name" &>/dev/null
+    container_is_running "$name"
 }
 
 create_container() {
-    log_info "Creating container '$CONTAINER_NAME' for build '$BUILD_NAME'..."
+    # Use library function with options
+    local options=()
+    [[ -n "$HOSTNAME" ]] && options+=(--hostname "$HOSTNAME")
+    [[ -n "$INSTALL_PACKAGES" ]] && options+=(--install-packages "$INSTALL_PACKAGES")
     
-    check_dataset_exists
-    local mount_point
-    mount_point=$(get_mount_point)
-    
-    if [[ ! -d "$mount_point" ]]; then
-        die "Target mountpoint '$mount_point' does not exist or is not mounted."
-    fi
-
-    if is_container_running "$CONTAINER_NAME"; then
-        die "Container '$CONTAINER_NAME' is already running."
-    fi
-
-    # Copy hostid for ZFS compatibility
-    local host_id
-    host_id=$(hostid)
-    log_debug "Copying hostid '$host_id' to container for ZFS compatibility..."
-    run_cmd cp /etc/hostid "$mount_point/etc/hostid" || {
-        log_debug "Creating hostid file in container..."
-        run_cmd bash -c "echo '$host_id' > '$mount_point/etc/hostid'"
-    }
-
-    # Install packages if requested
-    if [[ -n "$INSTALL_PACKAGES" ]]; then
-        log_info "Installing packages in container: $INSTALL_PACKAGES"
-        
-        # Convert comma-separated list to space-separated
-        local packages
-        packages=$(echo "$INSTALL_PACKAGES" | tr ',' ' ')
-        
-        run_cmd chroot "$mount_point" bash -c "
-            export DEBIAN_FRONTEND=noninteractive
-            apt-get update -q
-            apt-get install -y -q $packages
-        "
-    fi
-
-    # Enable networking services for proper container networking
-    log_info "Enabling systemd-networkd and systemd-resolved services..."
-    run_cmd chroot "$mount_point" bash -c "
-        systemctl enable systemd-networkd
-        systemctl enable systemd-resolved
-    "
-
-    log_info "Container '$CONTAINER_NAME' created and prepared."
+    container_create "$POOL_NAME" "$BUILD_NAME" "$CONTAINER_NAME" "${options[@]}"
 }
 
 start_container() {
-    log_info "Starting container '$CONTAINER_NAME'..."
+    # Use library function with options
+    local options=()
+    [[ -n "$HOSTNAME" ]] && options+=(--hostname "$HOSTNAME")
     
-    check_dataset_exists
-    local mount_point
-    mount_point=$(get_mount_point)
-
-    if is_container_running "$CONTAINER_NAME"; then
-        log_info "Container '$CONTAINER_NAME' is already running."
-        return 0
-    fi
-
-    # Start the container - systemd-nspawn with --boot runs as a daemon
-    local nspawn_cmd=(
-        "systemd-nspawn"
-        "--directory=$mount_point"
-        "--machine=$CONTAINER_NAME"
-        "--boot"
-        "--network-veth"
-        "--resolv-conf=copy-host"
-        "--timezone=auto"
-        "--console=passive"
-        "--link-journal=try-guest"
-        "--hostname=$HOSTNAME"
-        "--capability=all"
-        "--property=DevicePolicy=auto"
-    )
-    
-    log_debug "Starting container with command: ${nspawn_cmd[*]}"
-    
-    # Start the container in the background
-    "${nspawn_cmd[@]}" &
-    local nspawn_pid=$!
-    
-    # Wait for the machine to be registered with systemd-machined
-    log_info "Waiting for container to be ready..."
-    local retries=30
-    while [ $retries -gt 0 ]; do
-        if machinectl show "$CONTAINER_NAME" >/dev/null 2>&1; then
-            log_debug "Container '$CONTAINER_NAME' is registered with machinectl"
-            break
-        fi
-        sleep 1
-        retries=$((retries - 1))
-    done
-    
-    if [ $retries -eq 0 ]; then
-        log_error "Container '$CONTAINER_NAME' failed to register within timeout"
-        # Kill the background process if it's still running
-        if kill -0 "$nspawn_pid" 2>/dev/null; then
-            kill "$nspawn_pid"
-        fi
-        return 1
-    fi
-    
-    # Wait for systemd to be fully ready inside the container
-    log_info "Waiting for systemd to be fully ready in container..."
-    retries=60
-    while [ $retries -gt 0 ]; do
-        if systemd-run --machine="$CONTAINER_NAME" --wait /bin/true >/dev/null 2>&1; then
-            log_debug "Container systemd is ready"
-            break
-        fi
-        sleep 2
-        retries=$((retries - 1))
-    done
-    
-    if [ $retries -eq 0 ]; then
-        log_warn "Container systemd may not be fully ready, but proceeding anyway"
-    fi
-
-    # Start networking services in the container
-    log_info "Starting networking services in container..."
-    systemd-run --machine="$CONTAINER_NAME" --wait systemctl start systemd-networkd || log_warn "Failed to start systemd-networkd"
-    systemd-run --machine="$CONTAINER_NAME" --wait systemctl start systemd-resolved || log_warn "Failed to start systemd-resolved"
-    
-    log_info "Container '$CONTAINER_NAME' started successfully (PID: $nspawn_pid)."
+    container_start "$POOL_NAME" "$BUILD_NAME" "$CONTAINER_NAME" "${options[@]}"
 }
 
 stop_container() {
-    log_info "Stopping container '$CONTAINER_NAME'..."
-    
-    if ! is_container_running "$CONTAINER_NAME"; then
-        log_info "Container '$CONTAINER_NAME' is not running."
-        return 0
-    fi
-
-    # Graceful shutdown
-    run_cmd machinectl poweroff "$CONTAINER_NAME" || true
-    
-    # Wait a moment for graceful shutdown
-    sleep 3
-    
-    # Force terminate if still running
-    if is_container_running "$CONTAINER_NAME"; then
-        log_debug "Container still running, forcing termination..."
-        run_cmd machinectl terminate "$CONTAINER_NAME" || true
-    fi
-    
-    log_info "Container '$CONTAINER_NAME' stopped."
+    container_stop "$CONTAINER_NAME"
 }
 
 destroy_container() {
-    log_info "Destroying container '$CONTAINER_NAME'..."
-    
-    # Stop if running
-    if is_container_running "$CONTAINER_NAME"; then
-        stop_container
-    fi
-    
-    # Remove any persistent container state if it exists
-    # (systemd-nspawn containers are typically ephemeral, but clean up just in case)
-    
-    log_info "Container '$CONTAINER_NAME' destroyed."
+    container_destroy "$CONTAINER_NAME"
 }
 
 list_containers() {
-    log_info "Listing all systemd-nspawn containers..."
-    
-    if command -v machinectl >/dev/null; then
-        # For listing, we want to see the output even on success
-        machinectl list
-    else
-        log_error "machinectl not available - cannot list containers."
-        return 1
-    fi
+    container_list_all
 }
 
 shell_container() {
-    log_info "Opening shell in container '$CONTAINER_NAME'..."
-    
-    if ! is_container_running "$CONTAINER_NAME"; then
-        die "Container '$CONTAINER_NAME' is not running. Start it first with: $0 start $BUILD_NAME"
-    fi
-    
-    # Open interactive shell - use exec to replace this process
-    # This should completely replace the current process, preventing any further execution
-    exec machinectl shell "$CONTAINER_NAME"
+    container_shell "$CONTAINER_NAME"
 }
 
 exec_container() {
     local command="$1"
-    log_info "Executing command in container '$CONTAINER_NAME': $command"
-    
-    if ! is_container_running "$CONTAINER_NAME"; then
-        die "Container '$CONTAINER_NAME' is not running. Start it first with: $0 start $BUILD_NAME"
-    fi
-    
-    # Execute command in container using systemd-run
-    run_cmd systemd-run --machine="$CONTAINER_NAME" --wait /bin/bash -c "$command"
+    container_exec "$CONTAINER_NAME" /bin/bash -c "$command"
 }
 
 # --- Prerequisite Checks ---
 check_prerequisites() {
     # Check for required system commands
-    require_command "systemd-nspawn" "systemd-nspawn is required to manage containers."
-    require_command "machinectl" "machinectl is required to manage containers."
+    require_command "systemd-nspawn"
+    require_command "machinectl"
 
     if [[ "$ACTION" != "list" ]]; then
-        check_zfs_pool "$POOL_NAME"
+        zfs_check_pool "$POOL_NAME"
     fi
 }
 

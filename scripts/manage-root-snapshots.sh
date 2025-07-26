@@ -7,42 +7,37 @@
 
 # --- Script Setup ---
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../lib/common.sh
-source "$script_dir/../lib/common.sh"
+lib_dir="$script_dir/../lib"
+PROJECT_ROOT="$(dirname "$script_dir")"
+
+# Load global configuration
+if [[ -f "$PROJECT_ROOT/config/global.conf" ]]; then
+    source "$PROJECT_ROOT/config/global.conf"
+fi
+
+# Load libraries we need
+source "$lib_dir/constants.sh"       # For snapshot constants
+source "$lib_dir/logging.sh"         # For logging functions
+source "$lib_dir/execution.sh"       # For argument parsing and run_cmd
+source "$lib_dir/validation.sh"      # For build name validation
+source "$lib_dir/dependencies.sh"    # For require_command (zfs)
+source "$lib_dir/zfs.sh"             # For ZFS operations (primary functionality)
 
 # --- Script-specific Default values ---
 POOL_NAME="${DEFAULT_POOL_NAME}"
-SNAPSHOT_PREFIX="build-stage"
 
 # --- Function to create a snapshot without timestamp ---
 create_snapshot() {
     local dataset="$1"
     local stage_name="$2"
-    local snapshot_name="${SNAPSHOT_PREFIX}-${stage_name}"
-    local full_snapshot="${dataset}@${snapshot_name}"
+    
+    log_info "Creating ZFS snapshot for stage: $stage_name"
 
-    log_info "Creating ZFS snapshot: $full_snapshot"
-
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would create snapshot: $full_snapshot"
-        echo "$full_snapshot" # Still output the name for scripting
-        return 0
-    fi
-
-    # Remove any existing snapshot with the same name first
-    if zfs list -t snapshot "$full_snapshot" >/dev/null 2>&1; then
-        log_info "Removing existing snapshot: $full_snapshot"
-        if ! zfs destroy "$full_snapshot"; then
-            die "Failed to remove existing snapshot: $full_snapshot"
-        fi
-    fi
-
-    if zfs snapshot "$full_snapshot"; then
-        log_info "Successfully created snapshot: $full_snapshot"
-        echo "$full_snapshot"
-    else
-        die "Failed to create snapshot: $full_snapshot"
-    fi
+    # Use the ZFS library function with timestamp
+    local snapshot_path
+    snapshot_path=$(zfs_create_snapshot "$dataset" "$stage_name")
+    
+    echo "$snapshot_path"
 }
 
 # --- Function to list snapshots for a dataset ---
@@ -50,19 +45,29 @@ list_snapshots() {
     local dataset="$1"
     local filter_pattern="${2:-${SNAPSHOT_PREFIX}}"
 
-    echo "listing snapshots for dataset: $dataset"
+    log_info "Listing snapshots for dataset: $dataset"
 
+    # Use ZFS library function
     local snapshots
-    snapshots=$(zfs list -t snapshot -o name,creation,used -S creation -H "$dataset" 2>/dev/null | grep "@${filter_pattern}")
+    snapshots=$(zfs_list_snapshots "$dataset" "$filter_pattern")
 
     if [[ -z "$snapshots" ]]; then
         echo "no snapshots found matching pattern: $filter_pattern"
         return 0
     fi
 
+    # Get detailed information for each snapshot
+    local snapshot_details
+    snapshot_details=$(zfs list -t snapshot -o name,creation,used -S creation -H "$dataset" 2>/dev/null | grep "@${filter_pattern}")
+    
+    if [[ -z "$snapshot_details" ]]; then
+        echo "no snapshots found matching pattern: $filter_pattern"
+        return 0
+    fi
+
     printf "%-60s %-20s %-10s\n" "snapshot name" "creation time" "used"
     printf "%-60s %-20s %-10s\n" "-----------------------------------------------------------" "--------------------" "----------"
-    echo "$snapshots" | while read -r name creation used; do
+    echo "$snapshot_details" | while read -r name creation used; do
         printf "%-60s %-20s %-10s\n" \
             "$(basename "$name")" \
             "$creation" \
@@ -80,22 +85,8 @@ rollback_to_snapshot() {
     log_warn "Rolling back dataset '$dataset' to snapshot:"
     log_warn "  $snapshot_name"
 
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would rollback to: $full_snapshot"
-        return 0
-    fi
-
-    # Validate snapshot exists
-    if ! zfs list -t snapshot -H -o name "$full_snapshot" &>/dev/null; then
-        die "Snapshot does not exist: $full_snapshot"
-    fi
-
-    # Perform rollback
-    if zfs rollback -r "$full_snapshot"; then
-        log_info "Successfully rolled back to: $full_snapshot"
-    else
-        die "Failed to rollback to: $full_snapshot"
-    fi
+    # Use ZFS library function with force flag
+    zfs_rollback_snapshot "$full_snapshot" --force
 }
 
 # --- Function to rollback to a specific stage (convenience wrapper) ---
@@ -230,7 +221,8 @@ main() {
         die "Missing required arguments: action and/or name."
     fi
 
-    local dataset="${POOL_NAME}/ROOT/${root_name}"
+    local dataset
+    dataset=$(zfs_get_root_dataset_path "$POOL_NAME" "$root_name")
 
     # Validate dataset exists
     if ! zfs list -H -o name "$dataset" &>/dev/null; then

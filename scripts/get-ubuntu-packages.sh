@@ -10,10 +10,21 @@ set -euo pipefail
 # Global configuration
 VERBOSE="false"
 
-# Source common library
+# Source only the libraries we actually need (modular approach)
 script_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
-# shellcheck source=../lib/common.sh
-source "$script_dir/../lib/common.sh"
+lib_dir="$script_dir/../lib"
+PROJECT_ROOT="$(dirname "$script_dir")"
+
+# Load global configuration
+if [[ -f "$PROJECT_ROOT/config/global.conf" ]]; then
+    source "$PROJECT_ROOT/config/global.conf"
+fi
+
+# Load only what we need
+source "$lib_dir/constants.sh"     # For UBUNTU_SEEDS_BASE_URL  
+source "$lib_dir/logging.sh"       # For log_* functions and die
+source "$lib_dir/dependencies.sh"  # For require_command
+source "$lib_dir/ubuntu-api.sh"    # For get_default_ubuntu_codename
 
 # Function to fetch Ubuntu package manifests from official sources
 fetch_ubuntu_manifests() {

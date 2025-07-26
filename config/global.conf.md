@@ -6,6 +6,7 @@ This file contains system-wide default values used throughout the ZFS root insta
 
 ### ZFS Configuration
 - **DEFAULT_POOL_NAME**: Default ZFS pool name (default: "zroot")
+- **DEFAULT_ROOT_DATASET**: Base dataset name for build environments (default: "ROOT")
 - **DEFAULT_MOUNT_BASE**: Base directory for mounting build datasets (default: "/var/tmp/zfs-builds")
 
 ### Distribution Configuration
@@ -40,7 +41,7 @@ This file contains system-wide default values used throughout the ZFS root insta
 
 ## Usage
 
-The configuration is automatically loaded by `lib/common.sh` and made available to all scripts as readonly variables. If the configuration file is missing, fallback defaults are used.
+The configuration is automatically loaded by `lib/core.sh` and made available to all scripts as readonly variables. If the configuration file is missing, fallback defaults are used.
 
 ## Customization
 

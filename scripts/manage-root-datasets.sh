@@ -7,8 +7,21 @@
 
 # --- Script Setup ---
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../lib/common.sh
-source "$script_dir/../lib/common.sh"
+lib_dir="$script_dir/../lib"
+PROJECT_ROOT="$(dirname "$script_dir")"
+
+# Load global configuration
+if [[ -f "$PROJECT_ROOT/config/global.conf" ]]; then
+    source "$PROJECT_ROOT/config/global.conf"
+fi
+
+# Load only the libraries we need
+source "$lib_dir/constants.sh"       # For status constants
+source "$lib_dir/logging.sh"         # For logging functions
+source "$lib_dir/execution.sh"       # For argument parsing and run_cmd
+source "$lib_dir/validation.sh"      # For build name validation
+source "$lib_dir/zfs.sh"             # For ZFS operations (primary functionality)
+source "$lib_dir/build-status.sh"    # For build status integration
 
 # --- Script-specific Default values ---
 POOL_NAME="${DEFAULT_POOL_NAME}"
@@ -78,12 +91,13 @@ EOF
 # --- Function to unmount a root dataset from the build area ---
 unmount_root_dataset() {
     local dataset_name="$1"
-    local dataset="${POOL_NAME}/ROOT/${dataset_name}"
+    local dataset
+    dataset=$(zfs_get_root_dataset_path "$POOL_NAME" "$dataset_name")
     local mount_point="${MOUNT_BASE}/${dataset_name}"
 
     log_info "Attempting to unmount dataset '$dataset' from '$mount_point'..."
 
-    if ! zfs list -H -o name "$dataset" &>/dev/null; then
+    if ! zfs_dataset_exists "$dataset"; then
         log_warn "Dataset '$dataset' does not exist. Nothing to unmount."
         return 0
     fi
@@ -111,20 +125,22 @@ unmount_root_dataset() {
 # --- Function to mount varlog dataset ---
 mount_varlog_dataset() {
     local build_name="$1"
-    local dataset="${POOL_NAME}/ROOT/${build_name}"
-    local varlog_dataset="${dataset}/varlog"
+    local dataset
+    dataset=$(zfs_get_root_dataset_path "$POOL_NAME" "$build_name")
+    local varlog_dataset
+    varlog_dataset=$(zfs_get_varlog_dataset_path "$POOL_NAME" "$build_name")
     local mount_point="${MOUNT_BASE}/${build_name}"
     local varlog_mount_point="${mount_point}/var/log"
     
     log_info "Mounting varlog dataset for build: $build_name"
     
     # Check if main dataset exists
-    if ! zfs list -H -o name "$dataset" &>/dev/null; then
+    if ! zfs_dataset_exists "$dataset"; then
         die "Main dataset '$dataset' does not exist."
     fi
     
     # Check if varlog dataset exists
-    if ! zfs list -H -o name "$varlog_dataset" &>/dev/null; then
+    if ! zfs_dataset_exists "$varlog_dataset"; then
         die "Varlog dataset '$varlog_dataset' does not exist."
     fi
     
@@ -154,7 +170,8 @@ destroy_dataset() {
     local build_name="$1"
     local pool_name="$2"
     local mount_base="$3"
-    local dataset="${pool_name}/ROOT/${build_name}"
+    local dataset
+    dataset=$(zfs_get_root_dataset_path "$pool_name" "$build_name")
     local mount_point="${mount_base}/${build_name}"
 
     log_info "Preparing to destroy root dataset: ${dataset}"
@@ -220,24 +237,20 @@ destroy_dataset() {
 # --- Function to promote a dataset to be the next boot environment ---
 promote_to_bootfs() {
     local dataset_name="$1"
-    local dataset="${POOL_NAME}/ROOT/${dataset_name}"
+    local dataset
+    dataset=$(zfs_get_root_dataset_path "$POOL_NAME" "$dataset_name")
 
     log_info "Promoting '$dataset_name' to be the next boot environment..."
 
-    if ! zfs list -H -o name "$dataset" &>/dev/null; then
+    if ! zfs_dataset_exists "$dataset"; then
         die "Dataset '$dataset' does not exist."
     fi
 
     # Step 1: Unmount from build area if necessary
     unmount_root_dataset "$dataset_name"
 
-    # Step 2: Set canmount=noauto for safety
-    log_info "Setting canmount=noauto on $dataset"
-    run_cmd zfs set canmount=noauto "$dataset"
-
-    # Step 3: Set the bootfs property on the pool
-    log_info "Setting bootfs for pool '$POOL_NAME' to '$dataset'"
-    run_cmd zpool set bootfs="$dataset" "$POOL_NAME"
+    # Step 2: Use the high-level ZFS library function
+    zfs_promote_to_bootfs "$POOL_NAME" "$dataset_name"
 
     log_info "Successfully promoted '$dataset_name'. It will be the default on next boot."
 }
@@ -247,12 +260,6 @@ list_root_datasets() {
     # This function uses 'echo' instead of 'log_info' for cleaner, human-readable output.
     echo "listing zfs root datasets in pool '$POOL_NAME'..."
     check_zfs_pool "$POOL_NAME"
-
-    local root_parent="${POOL_NAME}/ROOT"
-    if ! zfs list -H -o name "$root_parent" &>/dev/null; then
-        echo "no 'ROOT' dataset found in pool '$POOL_NAME'. no root datasets to list."
-        return 0
-    fi
 
     local current_bootfs
     current_bootfs=$(zpool get -H -o value bootfs "$POOL_NAME" 2>/dev/null || echo "N/A")
@@ -266,12 +273,12 @@ list_root_datasets() {
     echo "pool status ($POOL_NAME): $pool_info"
     echo
 
-    # Get direct children of the ROOT dataset, excluding the ROOT dataset itself.
+    # Get direct children of the ROOT dataset using centralized function
     local datasets
-    datasets=$(zfs list -r -d 1 -t filesystem -o name,used,mountpoint,mounted -p -H "${root_parent}" | grep -v "^${root_parent}[[:space:]]")
-
+    datasets=$(zfs_list_root_datasets "$POOL_NAME")
+    
     if [[ -z "$datasets" ]]; then
-        echo "no root datasets found under '$root_parent'."
+        echo "no root datasets found under '${POOL_NAME}/${DEFAULT_ROOT_DATASET}'."
         return 0
     fi
 
@@ -298,7 +305,9 @@ list_root_datasets() {
         fi
 
         # Check for the existence of a varlog child dataset
-        if zfs list -H -o name "${name}/varlog" &>/dev/null; then
+        local build_name
+        build_name=$(basename "$name")
+        if zfs_varlog_dataset_exists "$POOL_NAME" "$build_name"; then
             status+="+varlog "
         else
             status+="-varlog "
@@ -377,11 +386,11 @@ main() {
             log_info "Starting ZFS root dataset creation for: '$BUILD_NAME'"
             check_zfs_pool "$POOL_NAME"
 
-            local root_dataset_parent="${POOL_NAME}/ROOT"
-            local dataset="${root_dataset_parent}/${BUILD_NAME}"
+            local dataset
+            dataset=$(zfs_get_root_dataset_path "$POOL_NAME" "$BUILD_NAME")
             local mount_point="${MOUNT_BASE}/${BUILD_NAME}"
 
-            if zfs list -H -o name "$dataset" &>/dev/null; then
+            if zfs_root_dataset_exists "$POOL_NAME" "$BUILD_NAME"; then
                 if [[ "$CLEANUP" == true ]]; then
                     log_warn "Root dataset '$BUILD_NAME' already exists. Destroying it due to --cleanup flag."
                     # Temporarily set force flag for the destroy operation
@@ -396,22 +405,11 @@ main() {
 
             log_info "Creating ZFS datasets for '$BUILD_NAME' in pool '$POOL_NAME'..."
 
-            if ! zfs list -H -o name "$root_dataset_parent" &>/dev/null; then
-                log_info "Creating parent dataset '$root_dataset_parent'..."
-                run_cmd zfs create -o canmount=off -o mountpoint=none "$root_dataset_parent"
-            fi
-
-            log_info "Creating main root dataset: $dataset"
-            # Create with mountpoint=legacy so it can be managed by traditional
-            # mount tools, but not auto-mounted by ZFS itself.
-            run_cmd zfs create -o canmount=noauto -o mountpoint=legacy "$dataset"
-
-            log_info "Creating child datasets..."
-            run_cmd zfs create -o mountpoint=legacy "${dataset}/varlog"
+            # Use the high-level ZFS library function
+            zfs_create_root_dataset "$POOL_NAME" "$BUILD_NAME"
 
             log_info "Mounting the new root dataset for build..."
-            run_cmd mkdir -p "$mount_point"
-            run_cmd mount -t zfs "$dataset" "$mount_point"
+            zfs_mount_root_dataset "$POOL_NAME" "$BUILD_NAME" "$MOUNT_BASE"
 
             log_info "ZFS root dataset creation for '$BUILD_NAME' complete."
             log_info "New environment is mounted at: $mount_point"

@@ -7,8 +7,23 @@
 
 # --- Script Setup ---
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../lib/common.sh
-source "$script_dir/../lib/common.sh"
+lib_dir="$script_dir/../lib"
+PROJECT_ROOT="$(dirname "$script_dir")"
+
+# Load global configuration
+if [[ -f "$PROJECT_ROOT/config/global.conf" ]]; then
+    source "$PROJECT_ROOT/config/global.conf"
+fi
+
+# Load libraries we need
+source "$lib_dir/constants.sh"       # For profile and architecture constants
+source "$lib_dir/logging.sh"         # For logging functions
+source "$lib_dir/execution.sh"       # For argument parsing and run_cmd
+source "$lib_dir/validation.sh"      # For input validation
+source "$lib_dir/dependencies.sh"    # For require_command (docker)
+source "$lib_dir/ubuntu-api.sh"      # For version resolution
+source "$lib_dir/zfs.sh"             # For ZFS dataset paths
+source "$lib_dir/build-status.sh"    # For build status integration
 
 # --- Script-specific Default values ---
 POOL_NAME="${DEFAULT_POOL_NAME}"
