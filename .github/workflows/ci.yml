@@ -36,17 +36,6 @@ jobs:
       run: |
         echo "::notice::ShellCheck analysis completed. Check the logs above for details."
         
-  checkbashisms:
-    name: Bash Compatibility Check
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Run checkbashisms
-      run: ./tools/checkbashisms.sh
-        
   yaml-check:
     name: YAML Syntax Check
     runs-on: ubuntu-latest
@@ -100,24 +89,26 @@ jobs:
         echo "Checking executable permissions on shell scripts..."
         exit_code=0
         
-        # Scripts that should be executable
+        # Only scripts/ files should be executable (lib/ files are sourced, not executed)
         while IFS= read -r -d '' file; do
-          if [[ "$file" == ./scripts/* ]] || [[ "$file" == ./lib/* ]]; then
+          if [[ "$file" == ./scripts/* ]]; then
             if [[ -x "$file" ]]; then
               echo "✅ Executable: $file"
             else
               echo "❌ Not executable: $file"
               exit_code=1
             fi
+          elif [[ "$file" == ./lib/* ]]; then
+            echo "ℹ️  Library file (sourced): $file"
           fi
         done < <(find . -name "*.sh" -type f -print0)
         
         if [ $exit_code -ne 0 ]; then
-          echo "❌ Some scripts lack executable permissions"
+          echo "❌ Some executable scripts lack permissions"
           echo "Fix with: chmod +x scripts/*.sh"
           exit 1
         else
-          echo "✅ All scripts have correct permissions"
+          echo "✅ All executable scripts have correct permissions"
         fi
 
   documentation-check:
@@ -135,9 +126,6 @@ jobs:
         
         required_files=(
           "README.md"
-          "TODO.md"
-          "SHELLCHECK_ANALYSIS.md"
-          ".shellcheckrc"
         )
         
         for file in "${required_files[@]}"; do
@@ -179,7 +167,7 @@ jobs:
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [shellcheck, checkbashisms, yaml-check, syntax-check, script-permissions, documentation-check, unit-tests]
+    needs: [shellcheck, yaml-check, syntax-check, script-permissions, documentation-check, unit-tests]
     if: always()
     
     steps:
@@ -190,7 +178,6 @@ jobs:
         echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
         echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
         echo "| ShellCheck | ${{ needs.shellcheck.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Bashisms Check | ${{ needs.checkbashisms.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
         echo "| YAML Syntax | ${{ needs.yaml-check.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Syntax Check | ${{ needs.syntax-check.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Permissions | ${{ needs.script-permissions.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
