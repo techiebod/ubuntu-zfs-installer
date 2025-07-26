@@ -163,7 +163,7 @@ readonly CONTAINER_NAME_PREFIX="zfs-build"
 
 readonly BUILD_NAME_PATTERN="^[a-zA-Z0-9._-]+$"
 readonly BUILD_NAME_MAX_LENGTH=50
-readonly HOSTNAME_PATTERN="^[a-zA-Z0-9.-]+$"
+readonly HOSTNAME_PATTERN="^[a-z0-9.-]+$"  # Lowercase only for RFC compliance
 readonly HOSTNAME_MAX_LENGTH=63
 
 # ==============================================================================

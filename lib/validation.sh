@@ -31,7 +31,7 @@ if [[ -z "${BUILD_NAME_MAX_LENGTH:-}" ]]; then
     readonly BUILD_NAME_MAX_LENGTH=63
 fi
 if [[ -z "${HOSTNAME_PATTERN:-}" ]]; then
-    readonly HOSTNAME_PATTERN='^[a-zA-Z0-9.-]+$'
+    readonly HOSTNAME_PATTERN='^[a-z0-9.-]+$'  # Lowercase only for RFC compliance
 fi
 if [[ -z "${HOSTNAME_MAX_LENGTH:-}" ]]; then
     readonly HOSTNAME_MAX_LENGTH=253

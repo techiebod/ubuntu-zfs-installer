@@ -1,0 +1,203 @@
+name: Shell Script Quality Checks
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  shellcheck:
+    name: ShellCheck Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run ShellCheck
+      run: ./tools/shellcheck.sh
+          
+    - name: Run ShellCheck with JSON output for annotations
+      if: always()
+      uses: docker://koalaman/shellcheck:stable
+      with:
+        args: >
+          --format=json
+          --severity=warning
+          --exclude=SC1090,SC1091
+          $(find . -name "*.sh" -type f)
+      continue-on-error: true
+      id: shellcheck-json
+      
+    - name: Process ShellCheck results
+      if: always()
+      run: |
+        echo "::notice::ShellCheck analysis completed. Check the logs above for details."
+        
+  checkbashisms:
+    name: Bash Compatibility Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run checkbashisms
+      run: ./tools/checkbashisms.sh
+        
+  yaml-check:
+    name: YAML Syntax Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check YAML syntax
+      run: ./tools/yaml-check.sh --strict
+        
+  syntax-check:
+    name: Bash Syntax Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check bash syntax
+      run: |
+        echo "Checking bash syntax for all shell scripts..."
+        exit_code=0
+        while IFS= read -r -d '' file; do
+          echo "Checking: $file"
+          if ! bash -n "$file"; then
+            echo "❌ Syntax error in: $file"
+            exit_code=1
+          else
+            echo "✅ Syntax OK: $file"
+          fi
+        done < <(find . -name "*.sh" -type f -print0)
+        
+        if [ $exit_code -ne 0 ]; then
+          echo "❌ Syntax errors found in shell scripts"
+          exit 1
+        else
+          echo "✅ All shell scripts have valid syntax"
+        fi
+        
+  script-permissions:
+    name: Check Script Permissions
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check executable permissions
+      run: |
+        echo "Checking executable permissions on shell scripts..."
+        exit_code=0
+        
+        # Scripts that should be executable
+        while IFS= read -r -d '' file; do
+          if [[ "$file" == ./scripts/* ]] || [[ "$file" == ./lib/* ]]; then
+            if [[ -x "$file" ]]; then
+              echo "✅ Executable: $file"
+            else
+              echo "❌ Not executable: $file"
+              exit_code=1
+            fi
+          fi
+        done < <(find . -name "*.sh" -type f -print0)
+        
+        if [ $exit_code -ne 0 ]; then
+          echo "❌ Some scripts lack executable permissions"
+          echo "Fix with: chmod +x scripts/*.sh"
+          exit 1
+        else
+          echo "✅ All scripts have correct permissions"
+        fi
+
+  documentation-check:
+    name: Documentation Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check for required documentation
+      run: |
+        echo "Checking for required documentation files..."
+        exit_code=0
+        
+        required_files=(
+          "README.md"
+          "TODO.md"
+          "SHELLCHECK_ANALYSIS.md"
+          ".shellcheckrc"
+        )
+        
+        for file in "${required_files[@]}"; do
+          if [[ -f "$file" ]]; then
+            echo "✅ Found: $file"
+          else
+            echo "❌ Missing: $file"
+            exit_code=1
+          fi
+        done
+        
+        # Check that all scripts have usage functions
+        echo "Checking for usage functions in scripts..."
+        while IFS= read -r -d '' script; do
+          if [[ "$script" == ./scripts/* ]]; then
+            if grep -q "show_usage\|usage\|--help" "$script"; then
+              echo "✅ Has usage help: $script"
+            else
+              echo "⚠️  No usage help found: $script"
+            fi
+          fi
+        done < <(find . -name "*.sh" -type f -print0)
+        
+        if [ $exit_code -ne 0 ]; then
+          exit 1
+        fi
+        
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run unit tests
+      run: ./tools/bats.sh test/unit/
+      
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [shellcheck, checkbashisms, yaml-check, syntax-check, script-permissions, documentation-check, unit-tests]
+    if: always()
+    
+    steps:
+    - name: Summary
+      run: |
+        echo "## Shell Script Quality Check Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| ShellCheck | ${{ needs.shellcheck.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Bashisms Check | ${{ needs.checkbashisms.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| YAML Syntax | ${{ needs.yaml-check.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Syntax Check | ${{ needs.syntax-check.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Permissions | ${{ needs.script-permissions.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Documentation | ${{ needs.documentation-check.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Unit Tests | ${{ needs.unit-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "${{ needs.shellcheck.result }}" != "success" ]]; then
+          echo "❌ ShellCheck found issues. Please run \`./tools/shellcheck.sh\` locally to see detailed issues."
+        fi
