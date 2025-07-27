@@ -25,7 +25,7 @@ source "$lib_dir/vendor/shflags"
 # --- Flag definitions ---
 DEFINE_string 'pool' "${DEFAULT_POOL_NAME}" 'The ZFS pool to operate on' 'p'
 DEFINE_boolean 'verbose' false 'Enable verbose output, showing all command outputs' 'v'
-DEFINE_boolean 'dry_run' false 'Show all commands that would be run without executing them'
+DEFINE_boolean 'dry-run' false 'Show all commands that would be run without executing them'
 DEFINE_boolean 'debug' false 'Enable detailed debug logging'
 
 # --- Function to create a snapshot without timestamp ---
@@ -189,7 +189,7 @@ parse_arguments() {
     POOL_NAME="${FLAGS_pool}"
     # shellcheck disable=SC2034
     VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
-    # shellcheck disable=SC2034
+    # shellcheck disable=SC2034,SC2154  # FLAGS_dry_run is set by shflags
     DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
     # shellcheck disable=SC2034
     DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")

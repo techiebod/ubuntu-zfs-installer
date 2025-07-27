@@ -40,7 +40,7 @@ DEFINE_string 'limit' '' 'Ansible limit pattern (default: HOSTNAME)' 'l'
 DEFINE_boolean 'snapshots' true 'Create ZFS snapshots after major build stages'
 DEFINE_boolean 'restart' false 'Force restart from beginning, ignoring existing build status'
 DEFINE_boolean 'verbose' false 'Enable verbose output, showing all command outputs'
-DEFINE_boolean 'dry_run' false 'Show all commands that would be run without executing them'
+DEFINE_boolean 'dry-run' false 'Show all commands that would be run without executing them'
 DEFINE_boolean 'debug' false 'Enable detailed debug logging'
 
 # --- Script-specific Variables ---
@@ -126,6 +126,7 @@ parse_args() {
     # Update global environment variables (exported by lib/core.sh)
     VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
     export VERBOSE
+    # shellcheck disable=SC2154  # FLAGS_dry_run is set by shflags
     DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
     export DRY_RUN
     DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
