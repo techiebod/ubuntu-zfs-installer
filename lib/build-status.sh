@@ -17,6 +17,7 @@ BUILD_STATUS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source required libraries
 source "${BUILD_STATUS_LIB_DIR}/constants.sh"
+source "${BUILD_STATUS_LIB_DIR}/execution.sh"
 
 # ==============================================================================
 # BUILD STATUS FILE OPERATIONS
@@ -101,10 +102,10 @@ build_set_status() {
     status_file=$(build_get_status_file "$build_name")
     
     # Ensure status directory exists
-    mkdir -p "$(dirname "$status_file")"
+    run_cmd mkdir -p "$(dirname "$status_file")"
     
     # Use new format with timestamp|status|message for better structure
-    echo "${timestamp}|${status}|${message}" >> "$status_file"
+    run_cmd sh -c "echo '${timestamp}|${status}|${message}' >> '$status_file'"
 }
 
 # Get the current status for a build
@@ -148,7 +149,7 @@ build_clear_status() {
     local force=false
     
     # Check for force flag
-    if [[ "$2" == "--force" ]] || [[ "$1" == "--force" && -n "$2" ]]; then
+    if [[ "${2:-}" == "--force" ]] || [[ "$1" == "--force" && -n "${2:-}" ]]; then
         force=true
         [[ "$1" == "--force" ]] && build_name="$2"
     fi
@@ -159,23 +160,19 @@ build_clear_status() {
         echo "Clearing build status: $build_name"
     fi
     
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        if [[ "$force" == "true" ]]; then
-            echo "[DRY RUN] Would force clear all artifacts for: $build_name"
-        else
-            echo "[DRY RUN] Would clear status for: $build_name"
-        fi
-        return 0
-    fi
-    
     local status_file
     local log_file
     
     status_file=$(build_get_status_file "$build_name")
     log_file=$(build_get_log_file "$build_name")
     
-    [[ -f "$status_file" ]] && rm -f "$status_file"
-    [[ -f "$log_file" ]] && rm -f "$log_file"
+    # Use run_cmd to handle DRY_RUN/DEBUG/VERBOSE output automatically
+    if [[ -f "$status_file" ]]; then
+        run_cmd rm -f "$status_file"
+    fi
+    if [[ -f "$log_file" ]]; then
+        run_cmd rm -f "$log_file"
+    fi
     
     return 0
 }
@@ -481,16 +478,44 @@ build_clean_all_artifacts() {
     
     log_info "Cleaning up all artifacts for build: $build_name"
     
-    # Stop and destroy container if it exists
+    # Clean up Docker container if it exists
     local container_name="$build_name"
+    log_debug "Checking for Docker container: $container_name"
+    
+    # Only try Docker cleanup if docker command is available
+    if command -v docker &>/dev/null; then
+        # Stop container if running
+        if run_cmd_read docker ps -q -f name="^${container_name}$" 2>/dev/null | grep -q .; then
+            if [[ "${VERBOSE:-false}" == "true" || "${DEBUG:-false}" == "true" ]]; then
+                log_info "Stopping Docker container: $container_name"
+            fi
+            run_cmd docker stop "$container_name"
+        fi
+        
+        # Remove container if it exists
+        if run_cmd_read docker ps -aq -f name="^${container_name}$" 2>/dev/null | grep -q .; then
+            if [[ "${VERBOSE:-false}" == "true" || "${DEBUG:-false}" == "true" ]]; then
+                log_info "Removing Docker container: $container_name"
+            fi
+            run_cmd docker rm "$container_name"
+        fi
+    else
+        log_debug "Docker not available, skipping Docker container cleanup"
+    fi
+    
+    # Clean up systemd-nspawn container if it exists
     container_cleanup_for_build "$container_name"
     
     # Destroy ZFS dataset and all snapshots
     local dataset
     dataset=$(zfs_get_root_dataset_path "$pool_name" "$build_name")
     if zfs_dataset_exists "$dataset"; then
-        log_info "Destroying ZFS dataset and snapshots: $dataset"
+        if [[ "${VERBOSE:-false}" == "true" || "${DEBUG:-false}" == "true" ]]; then
+            log_info "Destroying ZFS dataset: $dataset"
+        fi
         zfs_destroy_dataset "$dataset" --force
+    else
+        log_debug "ZFS dataset does not exist: $dataset"
     fi
     
     # Clear status files
@@ -522,14 +547,14 @@ build_log_event() {
     log_file=$(build_get_log_file "$build_name")
     
     # Ensure log directory exists
-    mkdir -p "$(dirname "$log_file")"
+    run_cmd mkdir -p "$(dirname "$log_file")"
     
     # Append to build log
     local context_prefix=""
     if [[ -n "${BUILD_LOG_CONTEXT:-}" ]]; then
         context_prefix="[$BUILD_LOG_CONTEXT] "
     fi
-    echo "${timestamp} [INFO] ${context_prefix}${message}" >> "$log_file"
+    run_cmd sh -c "echo '${timestamp} [INFO] ${context_prefix}${message}' >> '$log_file'"
 }
 
 # Set up build logging context for integration with main logging system

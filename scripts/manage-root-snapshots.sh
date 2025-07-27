@@ -122,16 +122,7 @@ cleanup_old_snapshots() {
 
     for snapshot in "${to_remove[@]}"; do
         log_info "Removing old snapshot: $snapshot"
-
-        if [[ "$DRY_RUN" == true ]]; then
-            log_info "[DRY RUN] Would remove: $snapshot"
-        else
-            if zfs destroy "$snapshot"; then
-                log_info "Removed snapshot: $snapshot"
-            else
-                log_error "Failed to remove snapshot: $snapshot" # Non-fatal
-            fi
-        fi
+        run_cmd zfs destroy "$snapshot"
     done
 }
 

@@ -31,13 +31,19 @@ _run_cmd_internal() {
     local die_on_failure="$3"
     shift 3
     
-    log_debug "Executing command: $cmd_str"
-
-    if [[ "$respect_dry_run" == "true" && "${DRY_RUN:-false}" == true ]]; then
-        log_info "[DRY-RUN] $cmd_str"
+    # Handle dry-run mode
+    if [[ "$respect_dry_run" == "true" && "${DRY_RUN:-false}" == "true" ]]; then
+        echo "[DRY RUN] Would execute: $cmd_str"
         return 0
-    elif [[ "$respect_dry_run" == "false" && "${DRY_RUN:-false}" == true ]]; then
-        log_debug "[DRY-RUN] Read operation: $cmd_str"
+    elif [[ "$respect_dry_run" == "false" && "${DRY_RUN:-false}" == "true" ]]; then
+        if [[ "${DEBUG:-false}" == "true" ]]; then
+            echo "[DRY RUN] Read operation (executing): $cmd_str"
+        fi
+    fi
+
+    # Show verbose information about command execution
+    if [[ "${VERBOSE:-false}" == "true" ]]; then
+        echo "[VERBOSE] Executing: $cmd_str"
     fi
 
     # Prepare for execution
@@ -45,30 +51,46 @@ _run_cmd_internal() {
     output_file=$(mktemp)
     local status=0
 
-    if [[ "${VERBOSE:-false}" == true ]]; then
-        # In verbose mode, stream output directly to stderr
-        log_info "[EXEC] $cmd_str"
-        "$@" > >(tee "$output_file") 2>&1 || status=$?
-    else
-        # For read operations, always show output; for write operations, capture it
-        if [[ "$respect_dry_run" == "false" ]]; then
-            # Read operation - show output
-            "$@" 2>&1 | tee "$output_file" || status=$?
+    # Execute the command and capture output
+    "$@" >"$output_file" 2>&1 || status=$?
+
+    # Show debug information (return status and raw output)
+    if [[ "${DEBUG:-false}" == "true" ]]; then
+        echo "[DEBUG] Command: $cmd_str"
+        echo "[DEBUG] Return status: $status"
+        if [[ -s "$output_file" ]]; then
+            echo "[DEBUG] Raw output:"
+            sed 's/^/[DEBUG]   /' "$output_file"
         else
-            # Write operation - capture output
-            "$@" >"$output_file" 2>&1 || status=$?
+            echo "[DEBUG] No output"
         fi
     fi
 
-    if [[ $status -ne 0 ]]; then
-        if [[ "$respect_dry_run" == "false" ]]; then
-            log_error "Read command failed with status $status: $cmd_str"
-        else
-            log_error "Command failed with status $status: $cmd_str"
+    # In verbose mode, show output if we're not in debug mode (to avoid duplication)
+    if [[ "${VERBOSE:-false}" == "true" && "${DEBUG:-false}" != "true" ]]; then
+        if [[ -s "$output_file" ]]; then
+            echo "[VERBOSE] Output:"
+            sed 's/^/[VERBOSE]   /' "$output_file"
         fi
-        log_error "Output:"
-        # Minimal indent for readability
-        sed 's/^/  /' "$output_file" >&2
+    fi
+
+    # For read operations, always show output (unless we're in debug mode)
+    if [[ "$respect_dry_run" == "false" && "${DEBUG:-false}" != "true" ]]; then
+        cat "$output_file"
+    fi
+
+    # Handle command execution results
+    if [[ $status -ne 0 ]]; then
+        if [[ "${DEBUG:-false}" != "true" ]]; then
+            # Only show error details if not already shown in debug mode
+            if [[ "$respect_dry_run" == "false" ]]; then
+                log_error "Read command failed with status $status: $cmd_str"
+            else
+                log_error "Command failed with status $status: $cmd_str"
+            fi
+            log_error "Output:"
+            sed 's/^/  /' "$output_file" >&2
+        fi
         rm -f "$output_file"
         
         if [[ "$die_on_failure" == "true" ]]; then
@@ -122,7 +144,7 @@ run_capture() {
     log_debug "Capturing output from: $cmd_str"
     
     if [[ "${DRY_RUN:-false}" == true ]]; then
-        log_info "[DRY-RUN] $cmd_str"
+        echo "[DRY RUN] Would execute: $cmd_str"
         echo "[dry-run-output]"
         return 0
     fi

@@ -201,7 +201,8 @@ teardown() {
     run build_clear_status "$TEST_BUILD_NAME"
     
     assert_success
-    assert_output --partial "[DRY RUN] Would clear status for: $TEST_BUILD_NAME"
+    assert_output --partial "Clearing build status: $TEST_BUILD_NAME"
+    assert_output --partial "[DRY RUN] Would execute: rm -f"
     
     # Verify files still exist
     [[ -f "$TEST_STATUS_FILE" ]]
@@ -452,7 +453,8 @@ teardown() {
     run build_clean_all_artifacts "build1"
     
     assert_success
-    assert_output --partial "[DRY RUN] Would clear status for:"
+    assert_output --partial "Cleaning up all artifacts for build: build1"
+    assert_output --partial "[DRY RUN] Would execute:"
     
     # Verify files still exist in dry run
     [[ -f "${TEST_STATUS_DIR}/build1.status" ]]

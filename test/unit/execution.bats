@@ -42,7 +42,7 @@ setup() {
     # Should not actually execute the command
     run run_cmd "false"
     [[ $status -eq 0 ]]  # Should succeed because it's dry run
-    [[ "$output" =~ "DRY-RUN" ]]
+    [[ "$output" == *"[DRY RUN] Would execute:"* ]]
 }
 
 @test "run_cmd executes commands when DRY_RUN is false" {

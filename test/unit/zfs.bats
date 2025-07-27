@@ -37,7 +37,7 @@ teardown() {
     run zfs_create_dataset "$TEST_DATASET" "-o" "mountpoint=none"
     
     assert_success
-    assert_output --partial "[DRY RUN] Would create dataset: test_pool/test -o mountpoint=none"
+    assert_output --partial "[DRY RUN] Would execute: zfs create -o mountpoint=none test_pool/test"
 }
 
 @test "zfs_create_dataset: handles existing dataset gracefully" {
@@ -54,7 +54,7 @@ teardown() {
     run zfs_create_dataset ""
     
     assert_success
-    assert_output --partial "[DRY RUN] Would create dataset:"
+    assert_output --partial "[DRY RUN] Would execute: zfs create"
 }
 
 @test "zfs_create_dataset: handles creation failure gracefully" {
@@ -81,7 +81,7 @@ teardown() {
     run zfs_destroy_dataset "$TEST_DATASET"
     
     assert_success
-    assert_output --partial "[DRY RUN] Would destroy dataset: test_pool/test"
+    assert_output --partial "[DRY RUN] Would execute: zfs destroy -r test_pool/test"
 }
 
 @test "zfs_destroy_dataset: handles non-existent dataset gracefully" {
@@ -101,7 +101,7 @@ teardown() {
     run zfs_destroy_dataset "$TEST_DATASET" --force
     
     assert_success
-    assert_output --partial "[DRY RUN] Would destroy dataset: test_pool/test"
+    assert_output --partial "[DRY RUN] Would execute: zfs destroy -f -r test_pool/test"
 }
 
 @test "zfs_destroy_dataset: handles destruction failure" {
@@ -131,8 +131,8 @@ teardown() {
     run zfs_mount_dataset "$TEST_DATASET" "$TEST_MOUNT_POINT"
     
     assert_success
-    assert_output --partial "[DRY RUN] Would create mount point: /tmp/test-mount"
-    assert_output --partial "[DRY RUN] Would mount: test_pool/test -> /tmp/test-mount"
+    assert_output --partial "[DRY RUN] Would execute: mkdir -p /tmp/test-mount"
+    assert_output --partial "[DRY RUN] Would execute: mount -t zfs test_pool/test /tmp/test-mount"
 }
 
 @test "zfs_mount_dataset: validates dataset exists before mounting" {
@@ -152,7 +152,8 @@ teardown() {
     run zfs_mount_dataset "$TEST_DATASET" "/tmp/nonexistent/path"
     
     assert_success
-    assert_output --partial "[DRY RUN] Would create mount point: /tmp/nonexistent/path"
+    assert_output --partial "[DRY RUN] Would execute: mkdir -p /tmp/nonexistent/path"
+    assert_output --partial "[DRY RUN] Would execute: mount -t zfs test_pool/test /tmp/nonexistent/path"
 }
 
 @test "zfs_mount_dataset: handles mount failure gracefully" {
@@ -185,7 +186,7 @@ teardown() {
     run zfs_unmount_dataset "$TEST_DATASET"
     
     assert_success
-    assert_output --partial "[DRY RUN] Would unmount: test_pool/test"
+    assert_output --partial "[DRY RUN] Would execute: umount /mnt/test"
 }
 
 @test "zfs_unmount_dataset: handles non-existent dataset" {
@@ -217,7 +218,7 @@ teardown() {
     run zfs_unmount_dataset "$TEST_DATASET" --force
     
     assert_success
-    assert_output --partial "[DRY RUN] Would unmount"
+    assert_output --partial "[DRY RUN] Would execute: umount -f /mnt/test"
 }
 
 # ==============================================================================
@@ -231,7 +232,7 @@ teardown() {
     run zfs_set_property "$TEST_DATASET" "mountpoint=none"
     
     assert_success
-    assert_output --partial "[DRY RUN] Would set property: test_pool/test mountpoint=none"
+    assert_output --partial "[DRY RUN] Would execute: zfs set mountpoint=none test_pool/test"
 }
 
 @test "zfs_set_property: validates dataset exists" {
@@ -269,7 +270,7 @@ teardown() {
     run zfs_create_snapshot "$TEST_DATASET" "$TEST_SNAPSHOT" "20240101-120000"
     
     assert_success
-    assert_output --partial "[DRY RUN] Would create snapshot: test_pool/test@build-stage-test-snapshot-20240101-120000"
+    assert_output --partial "[DRY RUN] Would execute: zfs snapshot test_pool/test@build-stage-test-snapshot-20240101-120000"
 }
 
 @test "zfs_create_snapshot: validates source dataset exists" {
@@ -320,7 +321,7 @@ teardown() {
     run zfs_destroy_snapshot "$test_snapshot"
     
     assert_success
-    assert_output --partial "[DRY RUN] Would destroy snapshot: ${test_snapshot}"
+    assert_output --partial "[DRY RUN] Would execute: zfs destroy test_pool/test@test-snapshot"
 }
 
 @test "zfs_destroy_snapshot: handles non-existent snapshot gracefully" {
@@ -363,7 +364,7 @@ teardown() {
     run zfs_rollback_snapshot "$test_snapshot"
     
     assert_success
-    assert_output --partial "[DRY RUN] Would rollback to snapshot: ${test_snapshot}"
+    assert_output --partial "[DRY RUN] Would execute: zfs rollback -r test_pool/test@test-snapshot"
 }
 
 @test "zfs_rollback_snapshot: validates snapshot exists" {
@@ -387,7 +388,7 @@ teardown() {
     run zfs_rollback_snapshot "$test_snapshot" --force
     
     assert_success
-    assert_output --partial "[DRY RUN] Would rollback to snapshot"
+    assert_output --partial "[DRY RUN] Would execute: zfs rollback -f -r test_pool/test@test-snapshot"
 }
 
 @test "zfs_rollback_snapshot: handles rollback failure" {
@@ -417,9 +418,9 @@ teardown() {
     
     assert_success
     assert_output --partial "Creating ZFS root dataset structure for: test-build"
-    assert_output --partial "[DRY RUN] Would create dataset: test_pool/ROOT"
-    assert_output --partial "[DRY RUN] Would create dataset: test_pool/ROOT/test-build"
-    assert_output --partial "[DRY RUN] Would create dataset: test_pool/ROOT/test-build/varlog"
+    assert_output --partial "[DRY RUN] Would execute: zfs create -o canmount=off -o mountpoint=none test_pool/ROOT"
+    assert_output --partial "[DRY RUN] Would execute: zfs create -o canmount= -o mountpoint= test_pool/ROOT/test-build"
+    assert_output --partial "[DRY RUN] Would execute: zfs create -o mountpoint= test_pool/ROOT/test-build/varlog"
 }
 
 @test "zfs_create_root_dataset: handles existing ROOT dataset" {
@@ -436,7 +437,7 @@ teardown() {
     assert_success
     assert_output --partial "Creating ZFS root dataset structure"
     # Should not try to create ROOT dataset
-    refute_output --partial "[DRY RUN] Would create dataset: test_pool/ROOT"
+    refute_output --partial "[DRY RUN] Would execute: zfs create -o canmount=off -o mountpoint=none test_pool/ROOT"
 }
 
 @test "zfs_mount_root_dataset: mounts root and varlog datasets" {

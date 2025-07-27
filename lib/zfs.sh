@@ -49,9 +49,13 @@ zfs_create_dataset() {
         return 0
     fi
     
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would create dataset: $dataset ${options[*]}"
-        return 0
+    # Log descriptive message in verbose/debug mode
+    if [[ "${VERBOSE:-false}" == "true" || "${DEBUG:-false}" == "true" ]]; then
+        local options_str=""
+        if [[ ${#options[@]} -gt 0 ]]; then
+            options_str=" ${options[*]}"
+        fi
+        log_info "Creating dataset: $dataset$options_str"
     fi
     
     if ! run_cmd zfs create "${options[@]}" "$dataset"; then
@@ -78,9 +82,9 @@ zfs_destroy_dataset() {
         return 0
     fi
     
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would destroy dataset: $dataset"
-        return 0
+    # Log descriptive message in verbose/debug mode
+    if [[ "${VERBOSE:-false}" == "true" || "${DEBUG:-false}" == "true" ]]; then
+        log_info "Destroying dataset: $dataset"
     fi
     
     local destroy_args=()
@@ -110,18 +114,9 @@ zfs_mount_dataset() {
     
     # Create mount point if it doesn't exist
     if [[ ! -d "$mount_point" ]]; then
-        if [[ "$DRY_RUN" == true ]]; then
-            log_info "[DRY RUN] Would create mount point: $mount_point"
-        else
-            if ! mkdir -p "$mount_point"; then
-                die "Failed to create mount point: $mount_point"
-            fi
+        if ! run_cmd mkdir -p "$mount_point"; then
+            die "Failed to create mount point: $mount_point"
         fi
-    fi
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would mount: $dataset -> $mount_point"
-        return 0
     fi
     
     if ! run_cmd mount -t zfs "$dataset" "$mount_point"; then
@@ -157,11 +152,6 @@ zfs_unmount_dataset() {
         return 0
     fi
     
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would unmount: $dataset"
-        return 0
-    fi
-    
     local umount_args=()
     if [[ "$force" == true ]]; then
         umount_args+=("-f")
@@ -185,11 +175,6 @@ zfs_set_property() {
     
     if ! zfs_dataset_exists "$dataset"; then
         die "Cannot set property on non-existent dataset: $dataset"
-    fi
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would set property: $dataset $property"
-        return 0
     fi
     
     if ! run_cmd zfs set "$property" "$dataset"; then
@@ -246,11 +231,6 @@ zfs_create_snapshot() {
         return 0
     fi
     
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would create snapshot: $full_snapshot"
-        return 0
-    fi
-    
     if ! run_cmd zfs snapshot "$full_snapshot"; then
         die "Failed to create ZFS snapshot: $full_snapshot"
     fi
@@ -268,11 +248,6 @@ zfs_destroy_snapshot() {
     
     if ! zfs_snapshot_exists "$snapshot"; then
         log_warn "Snapshot does not exist: $snapshot"
-        return 0
-    fi
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would destroy snapshot: $snapshot"
         return 0
     fi
     
@@ -297,11 +272,6 @@ zfs_rollback_snapshot() {
     
     if ! zfs_snapshot_exists "$snapshot"; then
         die "Cannot rollback to non-existent snapshot: $snapshot"
-    fi
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would rollback to snapshot: $snapshot"
-        return 0
     fi
     
     local rollback_args=()
