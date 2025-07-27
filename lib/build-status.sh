@@ -478,32 +478,10 @@ build_clean_all_artifacts() {
     
     log_info "Cleaning up all artifacts for build: $build_name"
     
-    # Clean up Docker container if it exists
-    local container_name="$build_name"
-    log_debug "Checking for Docker container: $container_name"
-    
-    # Only try Docker cleanup if docker command is available
-    if command -v docker &>/dev/null; then
-        # Stop container if running
-        if run_cmd_read docker ps -q -f name="^${container_name}$" 2>/dev/null | grep -q .; then
-            if [[ "${VERBOSE:-false}" == "true" || "${DEBUG:-false}" == "true" ]]; then
-                log_info "Stopping Docker container: $container_name"
-            fi
-            run_cmd docker stop "$container_name"
-        fi
-        
-        # Remove container if it exists
-        if run_cmd_read docker ps -aq -f name="^${container_name}$" 2>/dev/null | grep -q .; then
-            if [[ "${VERBOSE:-false}" == "true" || "${DEBUG:-false}" == "true" ]]; then
-                log_info "Removing Docker container: $container_name"
-            fi
-            run_cmd docker rm "$container_name"
-        fi
-    else
-        log_debug "Docker not available, skipping Docker container cleanup"
-    fi
+    # Note: Docker containers are automatically removed via --rm flag in all docker run commands
     
     # Clean up systemd-nspawn container if it exists
+    local container_name="$build_name"
     container_cleanup_for_build "$container_name"
     
     # Destroy ZFS dataset and all snapshots
@@ -513,6 +491,10 @@ build_clean_all_artifacts() {
         if [[ "${VERBOSE:-false}" == "true" || "${DEBUG:-false}" == "true" ]]; then
             log_info "Destroying ZFS dataset: $dataset"
         fi
+        
+        # Brief wait for container cleanup to fully complete
+        sleep 1
+        
         zfs_destroy_dataset "$dataset" --force
     else
         log_debug "ZFS dataset does not exist: $dataset"
