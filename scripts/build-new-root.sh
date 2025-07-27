@@ -7,30 +7,22 @@
 # of the process, from dataset creation to system configuration.
 
 # --- Script Setup ---
-# Source modular libraries instead of monolithic approach
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib_dir="$script_dir/../lib"
-PROJECT_ROOT="$(dirname "$script_dir")"
 
-# Load global configuration
-if [[ -f "$PROJECT_ROOT/config/global.conf" ]]; then
-    source "$PROJECT_ROOT/config/global.conf"
-fi
+# Load the core library which sets up essential project structure and variables
+source "$lib_dir/core.sh"
 
-# This is the main orchestration script - load all libraries
-source "$lib_dir/constants.sh"       # For all constants
+# Load libraries we need
 source "$lib_dir/logging.sh"         # For logging functions
-source "$lib_dir/execution.sh"       # For argument parsing and script invocation
+source "$lib_dir/execution.sh"       # For argument parsing and run_cmd
 source "$lib_dir/validation.sh"      # For input validation
-source "$lib_dir/dependencies.sh"    # For system requirements
-source "$lib_dir/ubuntu-api.sh"      # For distribution resolution
-source "$lib_dir/recovery.sh"        # For cleanup and error handling
-source "$lib_dir/zfs.sh"             # For ZFS operations
+source "$lib_dir/dependencies.sh"    # For require_command
+source "$lib_dir/recovery.sh"        # For cleanup management
+source "$lib_dir/ubuntu-api.sh"      # For version resolution
+source "$lib_dir/zfs.sh"             # For ZFS dataset paths
 source "$lib_dir/containers.sh"      # For container operations
-source "$lib_dir/build-status.sh"    # For build orchestration
-
-# Load shflags library for standardized argument parsing
-source "$lib_dir/vendor/shflags"
+source "$lib_dir/build-status.sh"    # For build status management
 
 # Load shflags library for standardized argument parsing
 source "$lib_dir/vendor/shflags"
@@ -131,9 +123,13 @@ parse_args() {
     # Convert shflags boolean values (0=true, 1=false) to traditional bash boolean
     CREATE_SNAPSHOTS=$([ "${FLAGS_snapshots}" -eq 0 ] && echo "true" || echo "false")
     FORCE_RESTART=$([ "${FLAGS_restart}" -eq 0 ] && echo "true" || echo "false")
+    # Update global environment variables (exported by lib/core.sh)
     VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
+    export VERBOSE
     DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
+    export DRY_RUN
     DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
+    export DEBUG
 }
 
 # --- Prerequisite Checks ---

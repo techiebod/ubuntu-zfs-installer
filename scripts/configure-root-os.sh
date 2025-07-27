@@ -9,15 +9,11 @@
 # --- Script Setup ---
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib_dir="$script_dir/../lib"
-PROJECT_ROOT="$(dirname "$script_dir")"
 
-# Load global configuration
-if [[ -f "$PROJECT_ROOT/config/global.conf" ]]; then
-    source "$PROJECT_ROOT/config/global.conf"
-fi
+# Load the core library which sets up essential project structure and variables
+source "$lib_dir/core.sh"
 
 # Load libraries we need
-source "$lib_dir/constants.sh"       # For status constants
 source "$lib_dir/logging.sh"         # For logging functions
 source "$lib_dir/execution.sh"       # For argument parsing and run_cmd
 source "$lib_dir/validation.sh"      # For hostname validation
@@ -100,8 +96,11 @@ parse_args() {
     PLAYBOOK="${FLAGS_playbook}"
     INVENTORY="${FLAGS_inventory}"
     VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
+    export VERBOSE
     DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
+    export DRY_RUN
     DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
+    export DEBUG
 }
 
 # --- Prerequisite Checks ---

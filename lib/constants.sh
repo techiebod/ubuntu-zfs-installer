@@ -4,6 +4,9 @@
 #
 # This file contains all constant values used throughout the project
 # to avoid magic strings and improve maintainability.
+# This file is sourced by other scripts, so all variables are
+# unused according to shellcheck, so help it chill out
+# shellcheck disable=SC2034
 
 # --- Prevent multiple sourcing ---
 if [[ "${__CONSTANTS_LIB_LOADED:-}" == "true" ]]; then
@@ -23,7 +26,6 @@ readonly STATUS_VARLOG_MOUNTED="varlog-mounted"
 readonly STATUS_CONTAINER_CREATED="container-created"
 readonly STATUS_ANSIBLE_CONFIGURED="ansible-configured"
 readonly STATUS_COMPLETED="completed"
-# shellcheck disable=SC2034  # Used by build-status.sh and tests
 readonly STATUS_FAILED="failed"
 
 # All valid statuses in progression order
@@ -192,24 +194,3 @@ readonly DEFAULT_CONTAINER_TIMEOUT
 readonly DEFAULT_CONTAINER_STOP_TIMEOUT
 readonly DEFAULT_NETWORK_TIMEOUT
 readonly DEFAULT_ZFS_OPERATION_TIMEOUT
-
-# ==============================================================================
-# EXPLICIT EXPORTS FOR SHELLCHECK COMPATIBILITY
-# ==============================================================================
-# Export all constants that should be available to other scripts
-# This ensures shellcheck recognizes them as intentionally exported
-
-export VALID_STATUSES
-export SNAPSHOT_PREFIX SNAPSHOT_TIMESTAMP_FORMAT
-export SNAPSHOT_DATASETS_CREATED SNAPSHOT_OS_INSTALLED SNAPSHOT_VARLOG_MOUNTED
-export SNAPSHOT_CONTAINER_CREATED SNAPSHOT_ANSIBLE_CONFIGURED
-export VALID_INSTALL_PROFILES VALID_ARCHITECTURES VALID_DISTRIBUTIONS
-export GRUB_PACKAGES_TO_HOLD ESSENTIAL_PACKAGES
-export UBUNTU_SEEDS_BASE_URL UBUNTU_API_BASE_URL
-export STATUS_FILE_SUFFIX BUILD_LOG_SUFFIX CONTAINER_NAME_PREFIX
-export BUILD_NAME_PATTERN BUILD_NAME_MAX_LENGTH
-export HOSTNAME_PATTERN HOSTNAME_MAX_LENGTH
-export EXIT_SUCCESS EXIT_GENERAL_ERROR EXIT_INVALID_ARGS EXIT_MISSING_DEPS
-export EXIT_CONFIG_ERROR EXIT_PERMISSION_ERROR EXIT_NETWORK_ERROR EXIT_TIMEOUT_ERROR
-export DEFAULT_CONTAINER_TIMEOUT DEFAULT_CONTAINER_STOP_TIMEOUT
-export DEFAULT_NETWORK_TIMEOUT DEFAULT_ZFS_OPERATION_TIMEOUT

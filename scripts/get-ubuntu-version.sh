@@ -12,6 +12,9 @@ set -euo pipefail
 script_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 lib_dir="$script_dir/../lib"
 
+# Load the core library which sets up essential project structure and variables
+source "$lib_dir/core.sh"
+
 # Load only what we need - no heavy validation or ZFS libraries
 source "$lib_dir/logging.sh"
 source "$lib_dir/dependencies.sh"
@@ -136,10 +139,14 @@ main() {
 
     # Convert shflags boolean values
     local mode="version" # Default mode
-    local validate_mode=$([ "${FLAGS_validate}" -eq 0 ] && echo "true" || echo "false")
-    local list_all=$([ "${FLAGS_list_all}" -eq 0 ] && echo "true" || echo "false")
-    local show_codename=$([ "${FLAGS_codename}" -eq 0 ] && echo "true" || echo "false")
-    local show_version=$([ "${FLAGS_version}" -eq 0 ] && echo "true" || echo "false")
+    local validate_mode
+    local list_all
+    local show_codename
+    local show_version
+    validate_mode=$([ "${FLAGS_validate}" -eq 0 ] && echo "true" || echo "false")
+    list_all=$([ "${FLAGS_list_all}" -eq 0 ] && echo "true" || echo "false")
+    show_codename=$([ "${FLAGS_codename}" -eq 0 ] && echo "true" || echo "false")
+    show_version=$([ "${FLAGS_version}" -eq 0 ] && echo "true" || echo "false")
     
     # Determine mode
     if [[ "$show_codename" == "true" ]]; then

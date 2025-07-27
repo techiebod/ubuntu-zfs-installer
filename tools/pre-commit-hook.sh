@@ -12,8 +12,8 @@
 set -euo pipefail
 
 # Configuration
-readonly PROJECT_ROOT
-PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+# shellcheck disable=SC2155
+readonly PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 readonly CI_SCRIPT="$PROJECT_ROOT/tools/ci-local.sh"
 
 # Colors for output

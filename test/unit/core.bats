@@ -44,27 +44,16 @@ setup() {
     [[ -n "${VALID_INSTALL_PROFILES:-}" ]]
 }
 
-@test "core library loads logging successfully" {
+@test "core library provides essential structure" {
     source "$PROJECT_ROOT/lib/core.sh"
     
-    # Should have loaded logging library
-    [[ "${__LOGGING_LIB_LOADED:-}" == "true" ]]
+    # Should provide core variables without loading all libraries
+    [[ -n "${PROJECT_ROOT:-}" ]]
+    [[ -n "${CORE_LIB_DIR:-}" ]]
+    [[ -n "${GLOBAL_CONFIG_FILE:-}" ]]
     
-    # Should have logging functions available
-    declare -F log_info >/dev/null
-    declare -F log_error >/dev/null
-    declare -F log_debug >/dev/null
-}
-
-@test "core library loads validation successfully" {
-    source "$PROJECT_ROOT/lib/core.sh"
-    
-    # Should have loaded validation library
-    [[ "${__VALIDATION_LIB_LOADED:-}" == "true" ]]
-    
-    # Should have validation functions available
-    declare -F validate_build_name >/dev/null
-    declare -F validate_hostname >/dev/null
+    # Should have constants loaded (minimal dependency)
+    [[ "${__CONSTANTS_LIB_LOADED:-}" == "true" ]]
 }
 
 @test "core library sets default configuration values" {
@@ -111,14 +100,17 @@ setup() {
 # HELPER FUNCTION TESTS
 # ==============================================================================
 
-@test "init_common_environment function exists and is callable" {
+@test "core library uses modular design" {
     source "$PROJECT_ROOT/lib/core.sh"
     
-    # Function should exist
-    declare -F init_common_environment >/dev/null
+    # Core should not automatically load all libraries
+    [[ "${__LOGGING_LIB_LOADED:-}" != "true" ]]
+    [[ "${__VALIDATION_LIB_LOADED:-}" != "true" ]]
     
-    # Should be callable (though we won't call it to avoid side effects)
-    type init_common_environment &>/dev/null
+    # But should provide the foundation for loading them
+    [[ -d "$CORE_LIB_DIR" ]]
+    [[ -f "$CORE_LIB_DIR/logging.sh" ]]
+    [[ -f "$CORE_LIB_DIR/validation.sh" ]]
 }
 
 @test "core library exports essential variables" {
