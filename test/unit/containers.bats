@@ -457,14 +457,15 @@ teardown() {
 }
 
 @test "container_list_all: lists all containers with status" {
-    # Mock run_cmd to handle the machinectl list command properly
-    run_cmd() {
-        if [[ "$1" == "machinectl" && "$2" == "list" ]]; then
+    # Mock machinectl command directly instead of run_cmd_read
+    machinectl() {
+        if [[ "$1" == "list" ]]; then
             echo "MACHINE         CLASS     SERVICE   OS     VERSION ADDRESSES"
             echo "test-container  container systemd-nspawn ubuntu 22.04   -"
             return 0
         fi
-        return 0
+        # For other machinectl commands, use original behavior
+        command machinectl "$@"
     }
     
     run container_list_all

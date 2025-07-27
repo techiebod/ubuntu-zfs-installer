@@ -409,9 +409,9 @@ build_show_history() {
     # Process lines (use tail if specified)
     local lines_to_process
     if [[ -n "$tail_count" ]]; then
-        lines_to_process=$(tail -n "$tail_count" "$status_file")
+        lines_to_process=$(run_cmd_read tail -n "$tail_count" "$status_file")
     else
-        lines_to_process=$(cat "$status_file")
+        lines_to_process=$(run_cmd_read cat "$status_file")
     fi
     
     while IFS= read -r line; do

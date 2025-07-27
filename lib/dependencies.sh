@@ -165,7 +165,7 @@ require_group_membership() {
 check_architecture() {
     local required_arch="${1:-amd64}"
     local current_arch
-    current_arch=$(dpkg --print-architecture 2>/dev/null || uname -m)
+    current_arch=$(run_cmd_read dpkg --print-architecture 2>/dev/null || uname -m)
     
     # Normalize architecture names
     case "$current_arch" in
@@ -189,7 +189,7 @@ check_disk_space() {
     fi
     
     local available_kb
-    available_kb=$(df "$path" | awk 'NR==2 {print $4}')
+    available_kb=$(run_cmd_read df "$path" | awk 'NR==2 {print $4}')
     local required_kb=$((min_gb * 1024 * 1024))
     
     if [[ $available_kb -lt $required_kb ]]; then

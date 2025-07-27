@@ -15,11 +15,11 @@ readonly __CONTAINER_LIB_LOADED="true"
 # CONTAINER STATE OPERATIONS
 # ==============================================================================
 
-# Check if a container is running
+# Check if container is running
 # Usage: container_is_running "container-name"
 container_is_running() {
     local container_name="$1"
-    machinectl show "$container_name" &>/dev/null
+    run_cmd_read machinectl show "$container_name" &>/dev/null
 }
 
 # Get container status information
@@ -33,7 +33,7 @@ container_get_status() {
     fi
     
     local state
-    state=$(machinectl show "$container_name" --property=State --value 2>/dev/null || echo "unknown")
+    state=$(run_cmd_read machinectl show "$container_name" --property=State --value 2>/dev/null || echo "unknown")
     echo "$state"
 }
 
@@ -47,7 +47,7 @@ container_wait_for_ready() {
     
     local retries=$timeout
     while [ $retries -gt 0 ]; do
-        if machinectl show "$container_name" >/dev/null 2>&1; then
+        if run_cmd_read machinectl show "$container_name" >/dev/null 2>&1; then
             log_debug "Container '$container_name' is registered with machinectl"
             return 0
         fi
@@ -476,12 +476,8 @@ container_list_all() {
     log_info "Listing all systemd-nspawn containers..."
     
     if command -v machinectl &>/dev/null; then
-        # For listing, we want to see the output even in non-verbose mode
-        if [[ "${DRY_RUN:-false}" == true ]]; then
-            log_info "[DRY-RUN] machinectl list"
-        else
-            machinectl list
-        fi
+        # Use run_cmd_read since this is a read-only operation
+        run_cmd_read machinectl list
     else
         log_warn "machinectl not available - cannot list containers"
         return 1
@@ -501,11 +497,11 @@ container_show_info() {
         if command -v machinectl &>/dev/null; then
             echo
             echo "Container Details:"
-            machinectl show "$container_name" 2>/dev/null || echo "  Details not available"
+            run_cmd_read machinectl show "$container_name" 2>/dev/null || echo "  Details not available"
             
             echo
             echo "Container Status:"
-            machinectl status "$container_name" 2>/dev/null || echo "  Status not available"
+            run_cmd_read machinectl status "$container_name" 2>/dev/null || echo "  Status not available"
         fi
     else
         echo "Status: Stopped"
@@ -562,13 +558,13 @@ container_get_detailed_status() {
         return 1
     fi
     
-    if ! machinectl show "$container_name" &>/dev/null; then
+    if ! run_cmd_read machinectl show "$container_name" &>/dev/null; then
         echo "not found"
         return 1
     fi
     
     local container_state
-    container_state=$(machinectl show "$container_name" --property=State --value 2>/dev/null || echo "unknown")
+    container_state=$(run_cmd_read machinectl show "$container_name" --property=State --value 2>/dev/null || echo "unknown")
     echo "$container_state"
     return 0
 }
@@ -583,7 +579,7 @@ container_cleanup_for_build() {
         return 0
     fi
     
-    if ! machinectl show "$container_name" &>/dev/null; then
+    if ! run_cmd_read machinectl show "$container_name" &>/dev/null; then
         log_debug "Container '$container_name' does not exist, no cleanup needed"
         return 0
     fi

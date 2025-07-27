@@ -376,7 +376,7 @@ list_saved_states() {
     
     if [[ -d "$state_dir" ]]; then
         local states
-        states=$(find "$state_dir" \( -name "state_*.json" -o -name "*.state" \) -type f 2>/dev/null | sort)
+        states=$(run_cmd_read find "$state_dir" \( -name "state_*.json" -o -name "*.state" \) -type f 2>/dev/null | sort)
         if [[ -n "$states" ]]; then
             echo "Saved states in $state_dir:"
             echo "$states"
@@ -416,7 +416,7 @@ cleanup_old_states() {
             echo "Cleaning up old state files (keeping $keep_newest newest)"
             # Keep only the newest N files
             local files_to_delete
-            files_to_delete=$(find "$state_dir" -name "*.state" -o -name "state_*.json" -type f 2>/dev/null | sort -t_ -k2 -n | head -n -"$keep_newest")
+            files_to_delete=$(run_cmd_read find "$state_dir" -name "*.state" -o -name "state_*.json" -type f 2>/dev/null | sort -t_ -k2 -n | head -n -"$keep_newest")
             if [[ -n "$files_to_delete" ]]; then
                 echo "$files_to_delete" | xargs rm -f 2>/dev/null || true
             fi
@@ -509,14 +509,14 @@ list_completed_operations() {
     # Check for completion files
     if [[ -d "$recovery_dir" ]]; then
         local completion_files
-        completion_files=$(find "$recovery_dir" -name "*.complete" -type f 2>/dev/null | sort)
+        completion_files=$(run_cmd_read find "$recovery_dir" -name "*.complete" -type f 2>/dev/null | sort)
         if [[ -n "$completion_files" ]]; then
             echo "Completed operations:"
             while IFS= read -r file; do
                 local basename_file
                 basename_file=$(basename "$file" .complete)
                 local timestamp
-                timestamp=$(cat "$file" 2>/dev/null || echo "unknown")
+                timestamp=$(run_cmd_read cat "$file" 2>/dev/null || echo "unknown")
                 echo "$basename_file: $timestamp"
                 found_any=true
             done <<< "$completion_files"

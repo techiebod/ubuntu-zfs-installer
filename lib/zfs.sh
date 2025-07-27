@@ -32,7 +32,7 @@ zfs_get_property() {
         return 1
     fi
     
-    zfs get -H -o value "$property" "$dataset" 2>/dev/null
+    run_cmd_read zfs get -H -o value "$property" "$dataset" 2>/dev/null
 }
 
 # Create ZFS dataset with error handling
@@ -212,7 +212,7 @@ zfs_list_datasets() {
         list_args+=("-r" "-d" "$depth" "$parent")
     fi
     
-    zfs list "${list_args[@]}" 2>/dev/null || true
+    run_cmd_read zfs list "${list_args[@]}" 2>/dev/null || true
 }
 
 # ==============================================================================
@@ -223,7 +223,7 @@ zfs_list_datasets() {
 # Usage: zfs_snapshot_exists "pool/dataset@snapshot"
 zfs_snapshot_exists() {
     local snapshot="$1"
-    zfs list -t snapshot "$snapshot" >/dev/null 2>&1
+    run_cmd_read zfs list -t snapshot "$snapshot" >/dev/null 2>&1
 }
 
 # Create ZFS snapshot with timestamp
@@ -326,7 +326,7 @@ zfs_list_snapshots() {
     local list_args=("-t" "snapshot" "-o" "name" "-S" "creation" "-H" "$dataset")
     
     local snapshots
-    mapfile -t snapshots < <(zfs list "${list_args[@]}" 2>/dev/null)
+    mapfile -t snapshots < <(run_cmd_read zfs list "${list_args[@]}" 2>/dev/null)
     
     if [[ -n "$pattern" ]]; then
         printf '%s\n' "${snapshots[@]}" | grep "$pattern" || true
@@ -375,7 +375,7 @@ zfs_check_pool() {
     
     if ! zpool list -H -o name "$pool_name" &>/dev/null; then
         local available_pools
-        available_pools=$(zpool list -H -o name 2>/dev/null | sed 's/^/    /' | tr '\n' ' ')
+        available_pools=$(run_cmd_read zpool list -H -o name 2>/dev/null | sed 's/^/    /' | tr '\n' ' ')
         
         die_with_context \
             "ZFS pool '$pool_name' not found" \
@@ -385,7 +385,7 @@ zfs_check_pool() {
     
     # Check pool health
     local pool_health
-    pool_health=$(zpool list -H -o health "$pool_name" 2>/dev/null)
+    pool_health=$(run_cmd_read zpool list -H -o health "$pool_name" 2>/dev/null)
     if [[ "$pool_health" != "ONLINE" ]]; then
         log_warn "⚠️  ZFS pool '$pool_name' status: $pool_health"
         log_info "💡 Check pool status with: sudo zpool status $pool_name"
@@ -531,7 +531,7 @@ zfs_list_root_datasets() {
     fi
     
     # List direct children of ROOT dataset, excluding ROOT itself
-    zfs list -r -d 1 -t filesystem -o name,used,mountpoint,mounted -p -H "${root_parent}" 2>/dev/null | \
+    run_cmd_read zfs list -r -d 1 -t filesystem -o name,used,mountpoint,mounted -p -H "${root_parent}" 2>/dev/null | \
         grep -v "^${root_parent}[[:space:]]"
 }
 

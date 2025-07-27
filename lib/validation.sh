@@ -137,7 +137,7 @@ check_zfs_pool() {
     
     if ! zpool list -H -o name "$pool_name" &>/dev/null; then
         local available_pools
-        available_pools=$(zpool list -H -o name 2>/dev/null | sed 's/^/    /' | tr '\n' ' ')
+        available_pools=$(run_cmd_read zpool list -H -o name 2>/dev/null | sed 's/^/    /' | tr '\n' ' ')
         
         die_with_context \
             "ZFS pool '$pool_name' not found" \
@@ -147,7 +147,7 @@ check_zfs_pool() {
     
     # Check pool health
     local pool_health
-    pool_health=$(zpool list -H -o health "$pool_name" 2>/dev/null)
+    pool_health=$(run_cmd_read zpool list -H -o health "$pool_name" 2>/dev/null)
     if [[ "$pool_health" != "ONLINE" ]]; then
         log_warn "⚠️  ZFS pool '$pool_name' status: $pool_health"
         log_info "💡 Check pool status with: sudo zpool status $pool_name"
@@ -190,7 +190,7 @@ validate_external_dependencies() {
     fi
     
     # Test internet connectivity for Ubuntu package downloads
-    if ! curl -s --connect-timeout 5 "https://archive.ubuntu.com" >/dev/null 2>&1; then
+    if ! run_cmd_read curl -s --connect-timeout 5 "https://archive.ubuntu.com" >/dev/null 2>&1; then
         log_warn "⚠️  Cannot reach Ubuntu package servers - some operations may fail"
         log_info "💡 Check internet connectivity or configure proxy settings"
     else
@@ -198,7 +198,7 @@ validate_external_dependencies() {
     fi
     
     # Test Launchpad API for version resolution
-    if ! curl -s --connect-timeout 5 "https://api.launchpad.net/1.0/ubuntu" >/dev/null 2>&1; then
+    if ! run_cmd_read curl -s --connect-timeout 5 "https://api.launchpad.net/1.0/ubuntu" >/dev/null 2>&1; then
         log_warn "⚠️  Cannot reach Launchpad API - Ubuntu version auto-detection may fail"
     else
         log_debug "✓ Launchpad API accessible"
@@ -225,7 +225,7 @@ validate_filesystem_requirements() {
     
     # Check available space (warn if < 10GB)
     local available_space
-    available_space=$(df "$DEFAULT_MOUNT_BASE" | awk 'NR==2 {print $4}')
+    available_space=$(run_cmd_read df "$DEFAULT_MOUNT_BASE" | awk 'NR==2 {print $4}')
     local required_space=$((10 * 1024 * 1024)) # 10GB in KB
     
     if [[ $available_space -lt $required_space ]]; then

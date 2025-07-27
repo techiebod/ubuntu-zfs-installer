@@ -37,7 +37,7 @@ DIST_CODENAME=""
 _get_ubuntu_codename_for_version() {
     local version="$1"
     local codename
-    codename=$(curl -s "https://api.launchpad.net/1.0/ubuntu/series" 2>/dev/null | \
+    codename=$(run_cmd_read curl -s "https://api.launchpad.net/1.0/ubuntu/series" 2>/dev/null | \
                jq -r ".entries[] | select(.version == \"$version\") | .name" 2>/dev/null)
 
     if [[ -n "$codename" && "$codename" != "null" ]]; then
@@ -50,7 +50,7 @@ _get_ubuntu_codename_for_version() {
 _get_ubuntu_version_for_codename() {
     local codename_in="$1"
     local version
-    version=$(curl -s "https://api.launchpad.net/1.0/ubuntu/series" 2>/dev/null | \
+    version=$(run_cmd_read curl -s "https://api.launchpad.net/1.0/ubuntu/series" 2>/dev/null | \
                jq -r ".entries[] | select(.name == \"$codename_in\") | .version" 2>/dev/null)
 
     if [[ -n "$version" && "$version" != "null" ]]; then
@@ -64,7 +64,7 @@ _get_latest_ubuntu_version() {
     local version=""
 
     # Method 1: Ubuntu Cloud Images (most up-to-date for releases)
-    version=$(curl -s "https://cloud-images.ubuntu.com/releases/" 2>/dev/null | \
+    version=$(run_cmd_read curl -s "https://cloud-images.ubuntu.com/releases/" 2>/dev/null | \
               grep -o 'href="[0-9][0-9]\.[0-9][0-9]/' | \
               grep -o '[0-9][0-9]\.[0-9][0-9]' | \
               sort -V | tail -1)
@@ -75,7 +75,7 @@ _get_latest_ubuntu_version() {
     fi
 
     # Method 2: Launchpad API fallback (current stable release)
-    version=$(curl -s "https://api.launchpad.net/1.0/ubuntu/series" 2>/dev/null | \
+    version=$(run_cmd_read curl -s "https://api.launchpad.net/1.0/ubuntu/series" 2>/dev/null | \
               jq -r '.entries[] | select(.status == "Current Stable Release") | .version' 2>/dev/null)
 
     if [[ -n "$version" && "$version" != "null" ]]; then
@@ -84,7 +84,7 @@ _get_latest_ubuntu_version() {
     fi
 
     # Method 3: Latest supported version from Launchpad
-    version=$(curl -s "https://api.launchpad.net/1.0/ubuntu/series" 2>/dev/null | \
+    version=$(run_cmd_read curl -s "https://api.launchpad.net/1.0/ubuntu/series" 2>/dev/null | \
               jq -r '.entries[] | select(.status == "Supported") | .version' 2>/dev/null | \
               sort -V | tail -1)
 

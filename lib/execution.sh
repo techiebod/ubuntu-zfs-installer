@@ -23,17 +23,21 @@ fi
 # COMMAND EXECUTION FRAMEWORK
 # ==============================================================================
 
-# Run a command, respecting VERBOSE and DRY_RUN modes.
-# If VERBOSE is true, output is streamed. Otherwise, it's captured.
-# On failure, it logs the command, status code, and output before exiting.
-# Usage: run_cmd "ls" "-l" "/tmp"
-run_cmd() {
-    local cmd_str="$*"
+# Internal command execution function - shared by run_cmd and run_cmd_read
+# Usage: _run_cmd_internal "cmd_str" respect_dry_run die_on_failure "$@"
+_run_cmd_internal() {
+    local cmd_str="$1"
+    local respect_dry_run="$2"
+    local die_on_failure="$3"
+    shift 3
+    
     log_debug "Executing command: $cmd_str"
 
-    if [[ "${DRY_RUN:-false}" == true ]]; then
+    if [[ "$respect_dry_run" == "true" && "${DRY_RUN:-false}" == true ]]; then
         log_info "[DRY-RUN] $cmd_str"
         return 0
+    elif [[ "$respect_dry_run" == "false" && "${DRY_RUN:-false}" == true ]]; then
+        log_debug "[DRY-RUN] Read operation: $cmd_str"
     fi
 
     # Prepare for execution
@@ -46,21 +50,53 @@ run_cmd() {
         log_info "[EXEC] $cmd_str"
         "$@" > >(tee "$output_file") 2>&1 || status=$?
     else
-        # In normal mode, capture output
-        "$@" >"$output_file" 2>&1 || status=$?
+        # For read operations, always show output; for write operations, capture it
+        if [[ "$respect_dry_run" == "false" ]]; then
+            # Read operation - show output
+            "$@" 2>&1 | tee "$output_file" || status=$?
+        else
+            # Write operation - capture output
+            "$@" >"$output_file" 2>&1 || status=$?
+        fi
     fi
 
     if [[ $status -ne 0 ]]; then
-        log_error "Command failed with status $status: $cmd_str"
+        if [[ "$respect_dry_run" == "false" ]]; then
+            log_error "Read command failed with status $status: $cmd_str"
+        else
+            log_error "Command failed with status $status: $cmd_str"
+        fi
         log_error "Output:"
         # Minimal indent for readability
         sed 's/^/  /' "$output_file" >&2
         rm -f "$output_file"
-        die "Aborting due to command failure."
+        
+        if [[ "$die_on_failure" == "true" ]]; then
+            die "Aborting due to command failure."
+        else
+            return $status
+        fi
     fi
 
     rm -f "$output_file"
     return 0
+}
+
+# Run a command, respecting VERBOSE and DRY_RUN modes.
+# If VERBOSE is true, output is streamed. Otherwise, it's captured.
+# On failure, it logs the command, status code, and output before exiting.
+# Usage: run_cmd "ls" "-l" "/tmp"
+run_cmd() {
+    local cmd_str="$*"
+    _run_cmd_internal "$cmd_str" "true" "true" "$@"
+}
+
+# Run a read-only command (always executes, even in DRY_RUN mode)
+# Use for commands that only query/display information without modifying state
+# Usage: run_cmd_read machinectl list
+run_cmd_read() {
+    local cmd_str="$*"
+    _run_cmd_internal "$cmd_str" "false" "false" "$@"
 }
 
 # Run a command silently (capture output, don't fail on error)
