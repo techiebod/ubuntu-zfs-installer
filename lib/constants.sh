@@ -44,7 +44,6 @@ declare -gAx STATUS_PROGRESSION=(
     ["$STATUS_VARLOG_MOUNTED"]="$STATUS_CONTAINER_CREATED"
     ["$STATUS_CONTAINER_CREATED"]="$STATUS_ANSIBLE_CONFIGURED"
     ["$STATUS_ANSIBLE_CONFIGURED"]="$STATUS_COMPLETED"
-    ["$STATUS_FAILED"]="$STATUS_DATASETS_CREATED"
 )
 
 # ==============================================================================

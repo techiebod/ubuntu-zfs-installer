@@ -11,6 +11,13 @@ if [[ "${__BUILD_STATUS_LIB_LOADED:-}" == "true" ]]; then
 fi
 readonly __BUILD_STATUS_LIB_LOADED="true"
 
+# --- Load dependencies ---
+# Get the directory where this script is located
+BUILD_STATUS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source required libraries
+source "${BUILD_STATUS_LIB_DIR}/constants.sh"
+
 # ==============================================================================
 # BUILD STATUS FILE OPERATIONS
 # ==============================================================================
@@ -69,7 +76,7 @@ build_set_status() {
     local timestamp
     timestamp=$(date -Iseconds)
     
-    log_debug "Setting build status: $build_name -> $status"
+    echo "Setting build status: $build_name -> $status"
     
     # Validate status
     local valid=false
@@ -81,7 +88,13 @@ build_set_status() {
     done
     
     if [[ "$valid" != true ]]; then
-        die "Invalid build status: '$status'. Valid statuses: ${VALID_STATUSES[*]}"
+        echo "Invalid status: $status" >&2
+        return 1
+    fi
+    
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        echo "[DRY RUN] Would set status: $build_name -> $status"
+        return 0
     fi
     
     local status_file
@@ -92,8 +105,6 @@ build_set_status() {
     
     # Use new format with timestamp|status|message for better structure
     echo "${timestamp}|${status}|${message}" >> "$status_file"
-    
-    log_debug "Build status updated: $build_name = $status"
 }
 
 # Get the current status for a build
@@ -103,7 +114,8 @@ build_get_status() {
     local last_entry
     
     if ! last_entry=$(build_get_last_status_entry "$build_name"); then
-        return 1
+        # Return success with empty output for non-existent builds
+        return 0
     fi
     
     # Extract status from last entry
@@ -119,7 +131,8 @@ build_get_status_timestamp() {
     local last_entry
     
     if ! last_entry=$(build_get_last_status_entry "$build_name"); then
-        return 1
+        # Return success with empty output for non-existent builds
+        return 0
     fi
     
     # Extract timestamp from last entry
@@ -129,26 +142,42 @@ build_get_status_timestamp() {
 }
 
 # Clear all status information for a build
-# Usage: build_clear_status "build-name"
+# Usage: build_clear_status "build-name" [--force]
 build_clear_status() {
     local build_name="$1"
+    local force=false
+    
+    # Check for force flag
+    if [[ "$2" == "--force" ]] || [[ "$1" == "--force" && -n "$2" ]]; then
+        force=true
+        [[ "$1" == "--force" ]] && build_name="$2"
+    fi
+    
+    if [[ "$force" == "true" ]]; then
+        echo "Force clearing all artifacts for: $build_name"
+    else
+        echo "Clearing build status: $build_name"
+    fi
+    
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        if [[ "$force" == "true" ]]; then
+            echo "[DRY RUN] Would force clear all artifacts for: $build_name"
+        else
+            echo "[DRY RUN] Would clear status for: $build_name"
+        fi
+        return 0
+    fi
+    
     local status_file
     local log_file
     
     status_file=$(build_get_status_file "$build_name")
     log_file=$(build_get_log_file "$build_name")
     
-    log_debug "Clearing build status for: $build_name"
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would remove status files for: $build_name"
-        return 0
-    fi
-    
     [[ -f "$status_file" ]] && rm -f "$status_file"
     [[ -f "$log_file" ]] && rm -f "$log_file"
     
-    log_debug "Cleared status files for: $build_name"
+    return 0
 }
 
 # ==============================================================================
@@ -195,6 +224,12 @@ build_should_run_stage() {
         return 1
     fi
     
+    # Failed builds can restart from any stage
+    if [[ "$current_status" == "$STATUS_FAILED" ]]; then
+        log_debug "Build failed - allowing restart from stage $stage"
+        return 0
+    fi
+    
     # Check if the requested stage comes after the current status in the progression
     local current_index=-1
     local stage_index=-1
@@ -204,12 +239,18 @@ build_should_run_stage() {
         [[ "${VALID_STATUSES[$i]}" == "$stage" ]] && stage_index=$i
     done
     
-    # Stage should run if it comes after the current status in the sequence
-    if [[ $stage_index -gt $current_index ]]; then
+    # Stage should run only if it's the immediate next stage in the sequence
+    if [[ $stage_index -eq $((current_index + 1)) ]]; then
         log_debug "Stage $stage should run (current: $current_status)"
         return 0
+    elif [[ $stage_index -eq $current_index ]]; then
+        log_debug "Stage $stage already completed"
+        return 1
+    elif [[ $stage_index -gt $current_index ]]; then
+        log_debug "Cannot run stage $stage - would skip stages (current: $current_status)"
+        return 1
     else
-        log_debug "Stage $stage should not run (current: $current_status)"
+        log_debug "Cannot run stage $stage - stage is before current status (current: $current_status)"
         return 1
     fi
 }
@@ -337,9 +378,16 @@ build_show_details() {
 }
 
 # Show build history with stage progression and timing
-# Usage: build_show_history "build-name"
+# Usage: build_show_history "build-name" [--tail N]
 build_show_history() {
     local build_name="$1"
+    local tail_count=""
+    
+    # Parse --tail option
+    if [[ "$2" == "--tail" && -n "$3" ]]; then
+        tail_count="$3"
+    fi
+    
     local status_file
     status_file=$(build_get_status_file "$build_name")
     
@@ -357,6 +405,14 @@ build_show_history() {
     local prev_timestamp=""
     local first_timestamp=""
     local last_timestamp=""
+    
+    # Process lines (use tail if specified)
+    local lines_to_process
+    if [[ -n "$tail_count" ]]; then
+        lines_to_process=$(tail -n "$tail_count" "$status_file")
+    else
+        lines_to_process=$(cat "$status_file")
+    fi
     
     while IFS= read -r line; do
         if [[ -z "$line" ]]; then continue; fi
@@ -394,7 +450,7 @@ build_show_history() {
         [[ -z "$first_timestamp" ]] && first_timestamp="$timestamp"
         last_timestamp="$timestamp"
         
-    done < "$status_file"
+    done <<< "$lines_to_process"
     
     # Show total build time if we have both first and last timestamps
     if [[ -n "$first_timestamp" && -n "$last_timestamp" && "$first_timestamp" != "$last_timestamp" ]]; then
@@ -453,7 +509,14 @@ build_log_event() {
     local build_name="$1"
     local message="$2"
     local timestamp
-    timestamp=$(date -Iseconds)
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    echo "Logging event for $build_name: $message"
+    
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        echo "[DRY RUN] Would log event: $message"
+        return 0
+    fi
     
     local log_file
     log_file=$(build_get_log_file "$build_name")
@@ -462,18 +525,21 @@ build_log_event() {
     mkdir -p "$(dirname "$log_file")"
     
     # Append to build log
-    echo "${timestamp} [INFO] ${message}" >> "$log_file"
-    
-    log_debug "Logged build event for $build_name: $message"
+    local context_prefix=""
+    if [[ -n "${BUILD_LOG_CONTEXT:-}" ]]; then
+        context_prefix="[$BUILD_LOG_CONTEXT] "
+    fi
+    echo "${timestamp} [INFO] ${context_prefix}${message}" >> "$log_file"
 }
 
 # Set up build logging context for integration with main logging system
-# Usage: build_set_logging_context "build-name"
+# Usage: build_set_logging_context "build-name" "context"
 build_set_logging_context() {
     local build_name="$1"
+    local context="${2:-}"
+    
+    echo "Setting logging context for $build_name: $context"
     
     # This sets the global BUILD_LOG_CONTEXT variable used by the logging system
-    export BUILD_LOG_CONTEXT="$build_name"
-    
-    log_debug "Build logging context set to: $build_name"
+    export BUILD_LOG_CONTEXT="$context"
 }
