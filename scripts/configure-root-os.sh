@@ -80,7 +80,7 @@ parse_args() {
     
     # Process positional arguments
     if [[ $# -ne 2 ]]; then
-        echo "Error: Expected exactly BUILD_NAME and HOSTNAME arguments" >&2
+        log_error "Expected exactly BUILD_NAME and HOSTNAME arguments"
         echo ""
         show_usage
         exit 1
@@ -138,6 +138,13 @@ check_prerequisites() {
 # --- Main Logic ---
 main() {
     parse_args "$@"
+    
+    # Disable timestamps for cleaner output in interactive mode
+    if is_interactive_mode; then
+        # shellcheck disable=SC2034  # Used by logging system
+        LOG_WITH_TIMESTAMPS=false
+    fi
+    
     check_prerequisites
 
     # Determine the mountpoint for the build

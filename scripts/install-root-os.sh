@@ -71,7 +71,7 @@ parse_args() {
     
     # Process positional arguments
     if [[ $# -ne 1 ]]; then
-        echo "Error: Expected exactly one BUILD_NAME argument" >&2
+        log_error "Expected exactly one BUILD_NAME argument"
         echo ""
         show_usage
         exit 1
@@ -177,6 +177,13 @@ check_prerequisites() {
 # --- Main Logic ---
 main() {
     parse_args "$@"
+    
+    # Disable timestamps for cleaner output in interactive mode
+    if is_interactive_mode; then
+        # shellcheck disable=SC2034  # Used by logging system
+        LOG_WITH_TIMESTAMPS=false
+    fi
+    
     check_prerequisites
 
     local mount_point="${MOUNT_BASE}/${BUILD_NAME}"

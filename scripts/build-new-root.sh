@@ -94,7 +94,7 @@ parse_args() {
     
     # Process positional arguments
     if [[ $# -lt 2 ]]; then
-        echo "Error: Missing required arguments BUILD_NAME and HOSTNAME" >&2
+        log_error "Missing required arguments BUILD_NAME and HOSTNAME"
         echo ""
         show_usage
         exit 1
@@ -105,7 +105,7 @@ parse_args() {
     
     # Check for extra arguments
     if [[ $# -gt 2 ]]; then
-        echo "Error: Too many arguments. Expected BUILD_NAME and HOSTNAME." >&2
+        log_error "Too many arguments. Expected BUILD_NAME and HOSTNAME."
         echo ""
         show_usage
         exit 1
@@ -198,6 +198,12 @@ clear_build_status() {
 # --- Main Build Logic ---
 main() {
     parse_args "$@"
+    
+    # Disable timestamps for cleaner output in interactive mode
+    if is_interactive_mode; then
+        # shellcheck disable=SC2034  # Used by logging system
+        LOG_WITH_TIMESTAMPS=false
+    fi
     
     # Set up cleanup handling only after confirming we're doing actual work
     # (not just showing help or validating arguments)

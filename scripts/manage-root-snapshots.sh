@@ -201,8 +201,11 @@ main() {
     parse_arguments "$@"
     eval set -- "${FLAGS_ARGV}"
     
-    # For list action, disable timestamps for cleaner output
-    [[ "${1:-}" == "list" ]] && export LOG_WITH_TIMESTAMPS=false
+    # Disable timestamps for cleaner output in interactive mode
+    if is_interactive_mode; then
+        # shellcheck disable=SC2034  # Used by logging system
+        LOG_WITH_TIMESTAMPS=false
+    fi
 
     local action=""
     local root_name=""

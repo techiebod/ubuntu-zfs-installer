@@ -525,6 +525,15 @@ The project includes comprehensive CI/CD with:
 - **Dry-run support** for safe testing
 - **Centralized logging** with debug levels
 
+### Library Architecture
+
+The project uses a **modular library architecture** where:
+
+- **`lib/core.sh`** provides minimal foundation (project structure, configuration, constants, global variables)
+- **Individual libraries** are loaded explicitly by scripts as needed (`logging.sh`, `validation.sh`, `zfs.sh`, etc.)
+- **Scripts follow consistent pattern**: `source lib/core.sh` → load specific libraries → script logic
+- **Zero shellcheck warnings** across entire codebase with appropriate suppression for false positives
+
 ### Development Tools
 
 #### Local CI Pipeline

@@ -78,6 +78,16 @@ export DEBUG=false
 export LOG_WITH_TIMESTAMPS=true
 
 # ==============================================================================
+# UTILITY FUNCTIONS
+# ==============================================================================
+
+# Check if we're running in interactive mode (for logging behavior)
+# Interactive mode = stdout is a terminal AND not in a build context
+is_interactive_mode() {
+    [[ -t 1 && -z "${BUILD_LOG_CONTEXT:-}" ]]
+}
+
+# ==============================================================================
 # CORE INITIALIZATION COMPLETE
 # ==============================================================================
 

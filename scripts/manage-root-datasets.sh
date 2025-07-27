@@ -257,8 +257,10 @@ promote_to_bootfs() {
 
 # --- Function to list datasets ---
 list_root_datasets() {
-    # This function uses 'echo' instead of 'log_info' for cleaner, human-readable output.
-    echo "listing zfs root datasets in pool '$POOL_NAME'..."
+    # Show status information in verbose mode or for human-readable list output
+    if [[ "${VERBOSE:-false}" == "true" ]]; then
+        log_info "Listing ZFS root datasets in pool '$POOL_NAME'..."
+    fi
     check_zfs_pool "$POOL_NAME"
 
     local current_bootfs
@@ -330,7 +332,7 @@ parse_args() {
     
     # Process positional arguments
     if [[ $# -eq 0 ]]; then
-        echo "Error: No action specified." >&2
+        log_error "No action specified."
         echo ""
         show_usage
         exit 1
@@ -342,15 +344,15 @@ parse_args() {
     case "$ACTION" in
         list)
             if [[ $# -ne 0 ]]; then
-                echo "Error: Action 'list' takes no other arguments." >&2
+                log_error "Action 'list' takes no other arguments."
                 echo ""
                 show_usage
                 exit 1
             fi
             ;;
-        create|destroy|promote|unmount|mount-varlog)
+        create|destroy|mount-varlog|unmount)
             if [[ $# -ne 1 ]]; then
-                echo "Error: Action '$ACTION' requires a NAME argument." >&2
+                log_error "Action '$ACTION' requires a NAME argument."
                 echo ""
                 show_usage
                 exit 1
@@ -358,7 +360,7 @@ parse_args() {
             BUILD_NAME="$1"
             ;;
         *)
-            echo "Error: Unknown action: $ACTION" >&2
+            log_error "Unknown action: $ACTION"
             echo ""
             show_usage
             exit 1
@@ -383,11 +385,14 @@ parse_args() {
 main() {
     parse_args "$@"
 
+    # Disable timestamps for cleaner output in interactive mode
+    if is_interactive_mode; then
+        # shellcheck disable=SC2034  # Used by logging system
+        LOG_WITH_TIMESTAMPS=false
+    fi
+
     case "$ACTION" in
         list)
-            # For interactive use, disable timestamps for cleaner output
-            # shellcheck disable=SC2034  # Used by logging system
-            LOG_WITH_TIMESTAMPS=false
             list_root_datasets
             ;;
         create)

@@ -87,7 +87,7 @@ parse_args() {
     
     # Process positional arguments
     if [[ $# -eq 0 ]]; then
-        echo "Error: No action specified." >&2
+        log_error "No action specified."
         echo ""
         show_usage
         exit 1
@@ -100,7 +100,7 @@ parse_args() {
     case "$ACTION" in
         list)
             if [[ $# -ne 0 ]]; then
-                echo "Error: Action 'list' takes no additional arguments." >&2
+                log_error "Action 'list' takes no additional arguments."
                 echo ""
                 show_usage
                 exit 1
@@ -108,7 +108,7 @@ parse_args() {
             ;;
         exec)
             if [[ $# -lt 2 ]]; then
-                echo "Error: Action 'exec' requires BUILD_NAME and COMMAND arguments." >&2
+                log_error "Action 'exec' requires BUILD_NAME and COMMAND arguments."
                 echo ""
                 show_usage
                 exit 1
@@ -120,7 +120,7 @@ parse_args() {
             ;;
         create|start|stop|destroy|shell)
             if [[ $# -ne 1 ]]; then
-                echo "Error: Action '$ACTION' requires exactly one BUILD_NAME argument." >&2
+                log_error "Action '$ACTION' requires exactly one BUILD_NAME argument."
                 echo ""
                 show_usage
                 exit 1
@@ -128,7 +128,7 @@ parse_args() {
             BUILD_NAME="$1"
             ;;
         *)
-            echo "Error: Unknown action: $ACTION" >&2
+            log_error "Unknown action: $ACTION"
             echo ""
             show_usage
             exit 1
@@ -225,6 +225,13 @@ check_prerequisites() {
 # --- Main Logic ---
 main() {
     parse_args "$@"
+    
+    # Disable timestamps for cleaner output in interactive mode
+    if is_interactive_mode; then
+        # shellcheck disable=SC2034  # Used by logging system
+        LOG_WITH_TIMESTAMPS=false
+    fi
+    
     check_prerequisites
 
     case "$ACTION" in

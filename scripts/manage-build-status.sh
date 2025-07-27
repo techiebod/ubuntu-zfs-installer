@@ -206,6 +206,12 @@ main() {
     parse_arguments "$@"
     eval set -- "${FLAGS_ARGV}"
     
+    # Disable timestamps for cleaner output in interactive mode
+    if is_interactive_mode; then
+        # shellcheck disable=SC2034  # Used by logging system
+        LOG_WITH_TIMESTAMPS=false
+    fi
+    
     if [[ $# -eq 0 ]]; then
         echo "Usage: $(basename "$0") [OPTIONS] ACTION [ARGUMENTS]"
         echo ""
