@@ -35,12 +35,12 @@ add_cleanup() {
     local cleanup_func="$1"
     
     if [[ -z "$cleanup_func" ]]; then
-        echo "No cleanup command provided" >&2
+        log_error "No cleanup command provided"
         return 1
     fi
     
     CLEANUP_STACK+=("$cleanup_func")
-    echo "Adding cleanup: $cleanup_func"
+    log_debug "Adding cleanup: $cleanup_func"
 }
 
 # Remove a cleanup function from the stack
@@ -69,16 +69,16 @@ remove_cleanup() {
     fi
     
     if [[ "$found" == "true" ]]; then
-        echo "Removing cleanup: $cleanup_func"
+        log_debug "Removing cleanup: $cleanup_func"
     else
-        echo "Cleanup command not found: $cleanup_func"
+        log_warn "Cleanup command not found: $cleanup_func"
     fi
 }
 
 # Run all cleanup functions in reverse order
 run_cleanup_stack() {
     if [[ ${#CLEANUP_STACK[@]} -eq 0 ]]; then
-        echo "No cleanup commands to run"
+        log_debug "No cleanup commands to run"
         return 0
     fi
     
@@ -90,25 +90,25 @@ run_cleanup_stack() {
         return 0
     fi
     
-    echo "Running cleanup stack"
+    log_info "Running cleanup stack"
     local i
     for ((i=${#CLEANUP_STACK[@]}-1; i>=0; i--)); do
         local cleanup_cmd="${CLEANUP_STACK[i]}"
-        echo "Executing cleanup: $cleanup_cmd"
+        log_debug "Executing cleanup: $cleanup_cmd"
         if declare -f "$cleanup_cmd" >/dev/null; then
             # It's a function
             if ! "$cleanup_cmd"; then
-                echo "Cleanup command failed: $cleanup_cmd"
+                log_error "Cleanup command failed: $cleanup_cmd"
             fi
         else
             # It's a shell command
             if ! eval "$cleanup_cmd"; then
-                echo "Cleanup command failed: $cleanup_cmd"
+                log_error "Cleanup command failed: $cleanup_cmd"
             fi
         fi
     done
     CLEANUP_STACK=()
-    echo "✅ Cleanup completed"
+    log_info "✅ Cleanup completed"
     
     # For cleanup, we always return success even if some commands failed
     # This allows the cleanup process to complete and not abort the script
@@ -118,7 +118,7 @@ run_cleanup_stack() {
 # Clear all cleanup functions
 clear_cleanup_stack() {
     CLEANUP_STACK=()
-    echo "Clearing cleanup stack"
+    log_debug "Clearing cleanup stack"
 }
 
 # ==============================================================================
@@ -127,7 +127,7 @@ clear_cleanup_stack() {
 
 # Default cleanup function called on error
 cleanup_on_error() {
-    echo "Script exiting with error, running cleanup"
+    log_error "Script exiting with error, running cleanup"
     run_cleanup_stack
 }
 
@@ -135,13 +135,13 @@ cleanup_on_error() {
 setup_cleanup_trap() {
     trap 'run_cleanup_stack' EXIT
     trap 'cleanup_on_error; exit 1' ERR
-    echo "Setting up cleanup trap for EXIT signal"
+    log_debug "Setting up cleanup trap for EXIT signal"
 }
 
 # Disable cleanup trap (useful for scripts that handle their own cleanup)
 disable_cleanup_trap() {
     trap - EXIT ERR
-    echo "Disabling cleanup trap"
+    log_debug "Disabling cleanup trap"
 }
 
 # Emergency cleanup for critical errors

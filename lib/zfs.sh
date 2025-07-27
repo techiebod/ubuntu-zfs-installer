@@ -49,14 +49,12 @@ zfs_create_dataset() {
         return 0
     fi
     
-    # Log descriptive message in verbose/debug mode
-    if [[ "${VERBOSE:-false}" == "true" || "${DEBUG:-false}" == "true" ]]; then
-        local options_str=""
-        if [[ ${#options[@]} -gt 0 ]]; then
-            options_str=" ${options[*]}"
-        fi
-        log_info "Creating dataset: $dataset$options_str"
+    # Always use proper logging - log_info respects VERBOSE mode internally
+    local options_str=""
+    if [[ ${#options[@]} -gt 0 ]]; then
+        options_str=" ${options[*]}"
     fi
+    log_info "Creating dataset: $dataset$options_str"
     
     if ! run_cmd zfs create "${options[@]}" "$dataset"; then
         die "Failed to create ZFS dataset: $dataset"
@@ -82,10 +80,8 @@ zfs_destroy_dataset() {
         return 0
     fi
     
-    # Log descriptive message in verbose/debug mode
-    if [[ "${VERBOSE:-false}" == "true" || "${DEBUG:-false}" == "true" ]]; then
-        log_info "Destroying dataset: $dataset"
-    fi
+    # Always use proper logging - log_info respects VERBOSE mode internally
+    log_info "Destroying dataset: $dataset"
     
     local destroy_args=()
     if [[ "$force" == true ]]; then
