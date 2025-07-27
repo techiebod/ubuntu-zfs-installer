@@ -55,26 +55,8 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Check bash syntax
-      run: |
-        echo "Checking bash syntax for all shell scripts..."
-        exit_code=0
-        while IFS= read -r -d '' file; do
-          echo "Checking: $file"
-          if ! bash -n "$file"; then
-            echo "❌ Syntax error in: $file"
-            exit_code=1
-          else
-            echo "✅ Syntax OK: $file"
-          fi
-        done < <(find . -name "*.sh" -type f -print0)
-        
-        if [ $exit_code -ne 0 ]; then
-          echo "❌ Syntax errors found in shell scripts"
-          exit 1
-        else
-          echo "✅ All shell scripts have valid syntax"
-        fi
+    - name: Check bash syntax with comprehensive tool
+      run: ./tools/syntax-check.sh
         
   script-permissions:
     name: Check Script Permissions

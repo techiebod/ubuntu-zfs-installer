@@ -525,6 +525,52 @@ The project includes comprehensive CI/CD with:
 - **Dry-run support** for safe testing
 - **Centralized logging** with debug levels
 
+### Development Tools
+
+#### Local CI Pipeline
+
+Run the exact same commands that GitHub Actions CI runs:
+
+```bash
+# Run all CI checks (extracts commands from .github/workflows/ci.yml)
+./tools/ci-local.sh
+
+# Individual checks
+./tools/syntax-check.sh      # Bash syntax validation
+./tools/shellcheck.sh        # ShellCheck static analysis  
+./tools/yaml-check.sh --strict # YAML syntax validation
+./tools/bats.sh             # Unit tests
+```
+
+#### Individual Quality Checks
+
+```bash
+# Bash syntax validation for all shell scripts
+./tools/syntax-check.sh
+
+# ShellCheck static analysis
+./tools/shellcheck.sh
+
+# YAML syntax validation
+./tools/yaml-check.sh --strict
+
+# Run unit tests
+./tools/bats.sh
+```
+
+#### Pre-commit Validation
+
+```bash
+# Quick pre-commit check
+./tools/ci-local.sh && git commit
+
+# Or install automatic pre-commit hook
+cp tools/pre-commit-hook.sh .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
+The CI runner automatically extracts and runs commands from the GitHub Actions workflow, ensuring perfect synchronization without maintaining duplicate logic.
+
 ### System Roles
 
 The system uses a mix of custom and community-maintained Ansible roles:
