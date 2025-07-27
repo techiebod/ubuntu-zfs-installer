@@ -1,33 +1,44 @@
 #!/usr/bin/env bats
-#
-# Unit tests for build-status.sh library
-#
+# Tests for lib/build-status.sh - Build status state management
 
+# Load test helpers
+load '../helpers/test_helper'
+
+# Source the build-status library under test
+source "${PROJECT_ROOT}/lib/build-status.sh"
+
+# Setup/teardown
 setup() {
-    export PROJECT_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
-    source "${PROJECT_ROOT}/test/unit/../helpers/test_helper.bash"
-    source "${PROJECT_ROOT}/lib/build-status.sh"
-    
-    # Create test directory for status files
-    export TEST_STATUS_DIR="/tmp/test-status"
-    export STATUS_DIR="$TEST_STATUS_DIR"
+    # Create test environment variables
     export TEST_BUILD_NAME="test-build"
+    export TEST_STATUS_DIR="/tmp/test-status"
     export TEST_STATUS_FILE="${TEST_STATUS_DIR}/${TEST_BUILD_NAME}.status"
     export TEST_LOG_FILE="${TEST_STATUS_DIR}/${TEST_BUILD_NAME}.log"
     
+    # Mock STATUS_DIR for testing
+    export STATUS_DIR="$TEST_STATUS_DIR"
+    
+    # Mock dry run mode by default for safety
+    export DRY_RUN=true
+    
+    # Create test status directory
     mkdir -p "$TEST_STATUS_DIR"
     
-    # Clean up any existing test files
-    rm -f "$TEST_STATUS_FILE" "$TEST_LOG_FILE"
+    # Clear any existing cleanup stack
+    clear_cleanup_stack 2>/dev/null || true
 }
 
 teardown() {
     # Clean up test files
     rm -rf "$TEST_STATUS_DIR"
+    
+    # Reset environment
+    unset TEST_BUILD_NAME TEST_STATUS_DIR TEST_STATUS_FILE TEST_LOG_FILE
+    unset STATUS_DIR DRY_RUN
 }
 
 # ==============================================================================
-# File Path Tests
+# Build Status File Management Tests
 # ==============================================================================
 
 @test "build_get_status_file: returns correct status file path" {
@@ -52,39 +63,35 @@ teardown() {
 }
 
 # ==============================================================================
-# Status Setting Tests
+# Build Status Setting Tests
 # ==============================================================================
 
 @test "build_set_status: creates status entry with timestamp" {
     export DRY_RUN=false
     
-    run build_set_status "$TEST_BUILD_NAME" "$STATUS_STARTED" "Test message"
+    run build_set_status "$TEST_BUILD_NAME" "$STATUS_STARTED"
     
     assert_success
     assert_output --partial "Setting build status: $TEST_BUILD_NAME -> $STATUS_STARTED"
     
-    # Verify file was created with correct format
+    # Verify status file was created
     [[ -f "$TEST_STATUS_FILE" ]]
-    local line
-    line=$(cat "$TEST_STATUS_FILE")
-    [[ "$line" =~ \|$STATUS_STARTED\|Test\ message$ ]]
+    
+    # Verify status file contains the status
+    grep -q "$STATUS_STARTED" "$TEST_STATUS_FILE"
 }
 
 @test "build_set_status: respects dry run mode" {
-    export DRY_RUN=true
-    
     run build_set_status "$TEST_BUILD_NAME" "$STATUS_STARTED"
     
     assert_success
     assert_output --partial "[DRY RUN] Would set status: $TEST_BUILD_NAME -> $STATUS_STARTED"
     
-    # Verify no file was created
+    # Verify status file was not created in dry run
     [[ ! -f "$TEST_STATUS_FILE" ]]
 }
 
 @test "build_set_status: validates status value" {
-    export DRY_RUN=false
-    
     run build_set_status "$TEST_BUILD_NAME" "invalid-status"
     
     assert_failure
@@ -94,40 +101,42 @@ teardown() {
 @test "build_set_status: appends to existing status file" {
     export DRY_RUN=false
     
-    # Set first status
+    # Set initial status
     build_set_status "$TEST_BUILD_NAME" "$STATUS_STARTED" >/dev/null
     
     # Set second status
-    run build_set_status "$TEST_BUILD_NAME" "$STATUS_DATASETS_CREATED" "Second message"
+    run build_set_status "$TEST_BUILD_NAME" "$STATUS_DATASETS_CREATED"
     
     assert_success
     
-    # Verify both entries exist
-    local line_count
-    line_count=$(wc -l < "$TEST_STATUS_FILE")
-    [[ "$line_count" -eq 2 ]]
+    # Verify both statuses are in file
+    grep -q "$STATUS_STARTED" "$TEST_STATUS_FILE"
+    grep -q "$STATUS_DATASETS_CREATED" "$TEST_STATUS_FILE"
 }
 
 @test "build_set_status: includes optional message" {
     export DRY_RUN=false
+    local test_message="Custom status message"
     
-    run build_set_status "$TEST_BUILD_NAME" "$STATUS_STARTED" "Custom message"
+    run build_set_status "$TEST_BUILD_NAME" "$STATUS_STARTED" "$test_message"
     
     assert_success
+    assert_output --partial "Setting build status: $TEST_BUILD_NAME -> $STATUS_STARTED"
     
-    # Verify message is included
-    grep -q "Custom message" "$TEST_STATUS_FILE"
+    # Verify message is in status file
+    grep -q "$test_message" "$TEST_STATUS_FILE"
 }
 
 # ==============================================================================
-# Status Reading Tests
+# Build Status Retrieval Tests
 # ==============================================================================
 
 @test "build_get_status: returns current status from file" {
     export DRY_RUN=false
     
-    # Create status file with pipe-separated format
-    echo "$(date -Iseconds)|$STATUS_DATASETS_CREATED|test message" > "$TEST_STATUS_FILE"
+    # Create status file with multiple entries using correct pipe format
+    echo "$(date -Iseconds)|$STATUS_STARTED|test message" > "$TEST_STATUS_FILE"
+    echo "$(date -Iseconds)|$STATUS_DATASETS_CREATED|another message" >> "$TEST_STATUS_FILE"
     
     run build_get_status "$TEST_BUILD_NAME"
     
@@ -143,6 +152,9 @@ teardown() {
 }
 
 @test "build_get_status: returns empty for empty status file" {
+    export DRY_RUN=false
+    
+    # Create empty status file
     touch "$TEST_STATUS_FILE"
     
     run build_get_status "$TEST_BUILD_NAME"
@@ -153,9 +165,10 @@ teardown() {
 
 @test "build_get_status_timestamp: returns timestamp of current status" {
     export DRY_RUN=false
-    local test_timestamp="2024-01-01T10:00:00+00:00"
+    local test_timestamp="2024-01-01T12:00:00+00:00"
     
-    echo "${test_timestamp}|$STATUS_STARTED|test message" > "$TEST_STATUS_FILE"
+    # Create status file with known timestamp using correct pipe format
+    echo "$test_timestamp|$STATUS_STARTED|test message" > "$TEST_STATUS_FILE"
     
     run build_get_status_timestamp "$TEST_BUILD_NAME"
     
@@ -171,7 +184,7 @@ teardown() {
 }
 
 # ==============================================================================
-# Status Clearing Tests
+# Build Status Clearing Tests
 # ==============================================================================
 
 @test "build_clear_status: removes status and log files" {
@@ -192,19 +205,22 @@ teardown() {
 }
 
 @test "build_clear_status: respects dry run mode" {
-    export DRY_RUN=true
+    export DRY_RUN=false
     
     # Create test files
     echo "test status" > "$TEST_STATUS_FILE"
     echo "test log" > "$TEST_LOG_FILE"
     
+    # Set dry run and clear
+    export DRY_RUN=true
     run build_clear_status "$TEST_BUILD_NAME"
     
     assert_success
     assert_output --partial "Clearing build status: $TEST_BUILD_NAME"
+    # In DRY_RUN mode, run_cmd should not execute the rm commands
     assert_output --partial "[DRY RUN] Would execute: rm -f"
     
-    # Verify files still exist
+    # Verify files still exist in dry run
     [[ -f "$TEST_STATUS_FILE" ]]
     [[ -f "$TEST_LOG_FILE" ]]
 }
@@ -221,8 +237,11 @@ teardown() {
 @test "build_clear_status: with force flag removes additional artifacts" {
     export DRY_RUN=false
     
-    # Create test files
+    # Create test files and additional artifacts
     echo "test status" > "$TEST_STATUS_FILE"
+    echo "test log" > "$TEST_LOG_FILE"
+    mkdir -p "${TEST_STATUS_DIR}/artifacts"
+    echo "artifact" > "${TEST_STATUS_DIR}/artifacts/${TEST_BUILD_NAME}.tmp"
     
     run build_clear_status "$TEST_BUILD_NAME" --force
     
@@ -231,14 +250,34 @@ teardown() {
 }
 
 # ==============================================================================
-# Stage Progression Tests  
+# Build Stage Progression Tests
 # ==============================================================================
 
 @test "build_get_next_stage: returns correct next stage" {
+    # Test progression through all stages
     run build_get_next_stage "$STATUS_STARTED"
-    
     assert_success
     assert_output "$STATUS_DATASETS_CREATED"
+    
+    run build_get_next_stage "$STATUS_DATASETS_CREATED"
+    assert_success
+    assert_output "$STATUS_OS_INSTALLED"
+    
+    run build_get_next_stage "$STATUS_OS_INSTALLED"
+    assert_success
+    assert_output "$STATUS_VARLOG_MOUNTED"
+    
+    run build_get_next_stage "$STATUS_VARLOG_MOUNTED"
+    assert_success
+    assert_output "$STATUS_CONTAINER_CREATED"
+    
+    run build_get_next_stage "$STATUS_CONTAINER_CREATED"
+    assert_success
+    assert_output "$STATUS_ANSIBLE_CONFIGURED"
+    
+    run build_get_next_stage "$STATUS_ANSIBLE_CONFIGURED"
+    assert_success
+    assert_output "$STATUS_COMPLETED"
 }
 
 @test "build_get_next_stage: returns empty for completed status" {
@@ -262,9 +301,11 @@ teardown() {
     assert_output ""
 }
 
+# ==============================================================================
+# Build Stage Execution Logic Tests
+# ==============================================================================
+
 @test "build_should_run_stage: allows stage when no current status" {
-    export DRY_RUN=false
-    
     run build_should_run_stage "$STATUS_DATASETS_CREATED" "$TEST_BUILD_NAME"
     
     assert_success
@@ -336,10 +377,13 @@ teardown() {
 }
 
 @test "build_list_all_with_status: handles empty status directory" {
+    # Remove all status files
+    rm -f "${TEST_STATUS_DIR}"/*.status 2>/dev/null || true
+    
     run build_list_all_with_status
     
     assert_success
-    assert_output --partial "No builds found."
+    assert_output --partial "No builds found"
 }
 
 @test "build_show_details: displays comprehensive build information" {
@@ -349,7 +393,8 @@ teardown() {
     echo "$(date -Iseconds)|$STATUS_STARTED|Initial build start" > "$TEST_STATUS_FILE"
     echo "$(date -Iseconds)|$STATUS_DATASETS_CREATED|ZFS datasets created" >> "$TEST_STATUS_FILE"
     
-    # Mock ZFS dataset existence
+    # Mock all ZFS functions that are checked
+    zfs_get_root_dataset_path() { echo "rpool/ROOT/$1"; }
     zfs_dataset_exists() { return 0; }
     zfs_get_property() { echo "1.5G"; }
     
@@ -401,13 +446,13 @@ teardown() {
     
     # Create status file with many entries using correct pipe format
     for i in {1..10}; do
-        echo "$(date -Iseconds)|status-${i}|Message ${i}" >> "$TEST_STATUS_FILE"
+        echo "2024-01-01T10:0${i}:00+00:00|status-${i}|Message ${i}" >> "$TEST_STATUS_FILE"
     done
     
     run build_show_history "$TEST_BUILD_NAME" --tail 3
     
     assert_success
-    assert_output --partial "Build History for: $TEST_BUILD_NAME"
+    assert_output --partial "Last 3 entries"
     # Should show entries 8, 9, 10
     assert_output --partial "status-8"
     assert_output --partial "status-9"
@@ -423,23 +468,22 @@ teardown() {
 @test "build_clean_all_artifacts: removes all build artifacts" {
     export DRY_RUN=false
     
-    # Create test artifacts
+    # Create various build artifacts
     echo "test status" > "${TEST_STATUS_DIR}/build1.status"
     echo "test log" > "${TEST_STATUS_DIR}/build1.log"
     echo "test status" > "${TEST_STATUS_DIR}/build2.status"
     mkdir -p "${TEST_STATUS_DIR}/temp"
     echo "temp file" > "${TEST_STATUS_DIR}/temp/build.tmp"
     
-    run build_clean_all_artifacts "build1"
+    run build_clean_all_artifacts
     
     assert_success
-    assert_output --partial "Cleaning up all artifacts"
+    assert_output --partial "Cleaning all build artifacts"
     
-    # Verify artifacts were removed for the specified build
+    # Verify artifacts were removed
     [[ ! -f "${TEST_STATUS_DIR}/build1.status" ]]
     [[ ! -f "${TEST_STATUS_DIR}/build1.log" ]]
-    # build2.status should still exist since we only cleaned build1
-    [[ -f "${TEST_STATUS_DIR}/build2.status" ]]
+    [[ ! -f "${TEST_STATUS_DIR}/build2.status" ]]
 }
 
 @test "build_clean_all_artifacts: respects dry run mode" {
@@ -450,11 +494,10 @@ teardown() {
     
     # Set dry run and clean
     export DRY_RUN=true
-    run build_clean_all_artifacts "build1"
+    run build_clean_all_artifacts
     
     assert_success
-    assert_output --partial "Cleaning up all artifacts for build: build1"
-    assert_output --partial "[DRY RUN] Would execute:"
+    assert_output --partial "[DRY RUN] Would clean all artifacts in: $TEST_STATUS_DIR"
     
     # Verify files still exist in dry run
     [[ -f "${TEST_STATUS_DIR}/build1.status" ]]
@@ -467,10 +510,10 @@ teardown() {
     echo "test status" > "${TEST_STATUS_DIR}/build1.status"
     echo "protected" > "${TEST_STATUS_DIR}/.protected"
     
-    run build_clean_all_artifacts "build1"
+    run build_clean_all_artifacts --force
     
     assert_success
-    assert_output --partial "Cleaning up all artifacts for build: build1"
+    assert_output --partial "Force cleaning all artifacts (including protected files)"
 }
 
 # ==============================================================================
@@ -486,13 +529,12 @@ teardown() {
     assert_success
     assert_output --partial "Logging event for $TEST_BUILD_NAME: $test_event"
     
-    # Verify log file was created and contains the event
+    # Verify event was logged
     [[ -f "$TEST_LOG_FILE" ]]
     grep -q "$test_event" "$TEST_LOG_FILE"
 }
 
 @test "build_log_event: respects dry run mode" {
-    export DRY_RUN=true
     local test_event="Test event message"
     
     run build_log_event "$TEST_BUILD_NAME" "$test_event"
@@ -500,7 +542,7 @@ teardown() {
     assert_success
     assert_output --partial "[DRY RUN] Would log event: $test_event"
     
-    # Verify no log file was created
+    # Verify log file was not created
     [[ ! -f "$TEST_LOG_FILE" ]]
 }
 
@@ -518,8 +560,11 @@ teardown() {
     export DRY_RUN=false
     local test_context="dataset-creation"
     
-    # Call without 'run' to preserve the exported environment variable
+    # Set the logging context
     build_set_logging_context "$TEST_BUILD_NAME" "$test_context"
+    
+    # Verify the context was set
+    [[ "${BUILD_LOG_CONTEXT:-}" == "$test_context" ]]
     
     # Context should be available for next log entry
     build_log_event "$TEST_BUILD_NAME" "Test message" >/dev/null

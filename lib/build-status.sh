@@ -151,7 +151,7 @@ build_clear_status() {
     # Check for force flag
     if [[ "${2:-}" == "--force" ]] || [[ "$1" == "--force" && -n "${2:-}" ]]; then
         force=true
-        [[ "$1" == "--force" ]] && build_name="$2"
+        [[ "$1" == "--force" ]] && build_name="${2:-}"
     fi
     
     if [[ "$force" == "true" ]]; then
@@ -326,26 +326,39 @@ build_show_details() {
     
     # ZFS dataset information
     local dataset
-    dataset=$(zfs_get_root_dataset_path "$pool_name" "$build_name")
-    if zfs_dataset_exists "$dataset"; then
+    if declare -f zfs_get_root_dataset_path >/dev/null 2>&1; then
+        dataset=$(zfs_get_root_dataset_path "$pool_name" "$build_name")
+        if declare -f zfs_dataset_exists >/dev/null 2>&1 && zfs_dataset_exists "$dataset"; then
         echo "ZFS Dataset Information:"
         echo "  Dataset: $dataset"
         
         local used
-        used=$(zfs_get_property "$dataset" "used" 2>/dev/null || echo "unknown")
+        if declare -f zfs_get_property >/dev/null 2>&1; then
+            used=$(zfs_get_property "$dataset" "used" 2>/dev/null || echo "unknown")
+        else
+            used="unknown (zfs_get_property not available)"
+        fi
         echo "  Used Space: $used"
         
         local mountpoint
-        mountpoint=$(zfs_get_property "$dataset" "mountpoint" 2>/dev/null || echo "unknown")
+        if declare -f zfs_get_property >/dev/null 2>&1; then
+            mountpoint=$(zfs_get_property "$dataset" "mountpoint" 2>/dev/null || echo "unknown")
+        else
+            mountpoint="unknown (zfs_get_property not available)"
+        fi
         echo "  Mountpoint: $mountpoint"
         
         local canmount
-        canmount=$(zfs_get_property "$dataset" "canmount" 2>/dev/null || echo "unknown")
+        if declare -f zfs_get_property >/dev/null 2>&1; then
+            canmount=$(zfs_get_property "$dataset" "canmount" 2>/dev/null || echo "unknown")
+        else
+            canmount="unknown (zfs_get_property not available)"
+        fi
         echo "  Can Mount: $canmount"
         
         # Check for varlog dataset
         local varlog_dataset="${dataset}/varlog"
-        if zfs_dataset_exists "$varlog_dataset"; then
+        if declare -f zfs_dataset_exists >/dev/null 2>&1 && zfs_dataset_exists "$varlog_dataset"; then
             echo "  Varlog Dataset: exists"
         else
             echo "  Varlog Dataset: not found"
@@ -353,23 +366,35 @@ build_show_details() {
         
         # List snapshots
         local snapshots
-        mapfile -t snapshots < <(zfs_list_snapshots "$dataset" "$SNAPSHOT_PREFIX" 2>/dev/null)
-        if [[ ${#snapshots[@]} -gt 0 ]]; then
-            echo "  Snapshots: ${#snapshots[@]} found"
+        if declare -f zfs_list_snapshots >/dev/null 2>&1; then
+            mapfile -t snapshots < <(zfs_list_snapshots "$dataset" "$SNAPSHOT_PREFIX" 2>/dev/null)
+            if [[ ${#snapshots[@]} -gt 0 ]]; then
+                echo "  Snapshots: ${#snapshots[@]} found"
+            else
+                echo "  Snapshots: none found"
+            fi
         else
-            echo "  Snapshots: none found"
+            echo "  Snapshots: unknown (zfs_list_snapshots not available)"
         fi
     else
         echo "ZFS Dataset: not found ($dataset)"
+    fi
+    else
+        echo "ZFS Dataset: not available (ZFS functions not loaded)"
     fi
     
     echo
     
     # Container information
     local container_name="$build_name"
-    local container_status
-    container_status=$(container_get_detailed_status "$container_name")
-    echo "Container Status: $container_status"
+    echo "Container Status:"
+    if declare -f container_get_detailed_status >/dev/null 2>&1; then
+        local container_status
+        container_status=$(container_get_detailed_status "$container_name")
+        echo "  $container_status"
+    else
+        echo "  Container functions not available"
+    fi
     
     echo
 }
@@ -384,7 +409,6 @@ build_show_history() {
     if [[ "$2" == "--tail" && -n "$3" ]]; then
         tail_count="$3"
     fi
-    
     local status_file
     status_file=$(build_get_status_file "$build_name")
     
@@ -394,6 +418,12 @@ build_show_history() {
     fi
     
     log_info "Build History for: $build_name"
+    
+    if [[ -n "$tail_count" ]]; then
+        echo
+        echo "Last $tail_count entries:"
+    fi
+    
     echo
     echo "Stage Progression & Timings:"
     printf "%-25s %-20s %-25s %s\n" "Status" "Duration" "Timestamp" "Message"
@@ -470,9 +500,9 @@ build_show_history() {
 # BUILD CLEANUP OPERATIONS
 # ==============================================================================
 
-# Clean up all artifacts for a build (datasets, containers, status)
-# Usage: build_clean_all_artifacts "build-name" [pool-name]
-build_clean_all_artifacts() {
+# Clean up artifacts for a specific build (datasets, containers, status)
+# Usage: build_clean_artifacts "build-name" [pool-name]
+build_clean_artifacts() {
     local build_name="$1"
     local pool_name="${2:-$DEFAULT_POOL_NAME}"
     
@@ -482,28 +512,70 @@ build_clean_all_artifacts() {
     
     # Clean up systemd-nspawn container if it exists
     local container_name="$build_name"
-    container_cleanup_for_build "$container_name"
+    if declare -f container_cleanup_for_build >/dev/null 2>&1; then
+        container_cleanup_for_build "$container_name"
+    else
+        log_debug "container_cleanup_for_build function not available"
+    fi
     
     # Destroy ZFS dataset and all snapshots
     local dataset
-    dataset=$(zfs_get_root_dataset_path "$pool_name" "$build_name")
-    if zfs_dataset_exists "$dataset"; then
-        if [[ "${VERBOSE:-false}" == "true" || "${DEBUG:-false}" == "true" ]]; then
-            log_info "Destroying ZFS dataset: $dataset"
+    if declare -f zfs_get_root_dataset_path >/dev/null 2>&1; then
+        dataset=$(zfs_get_root_dataset_path "$pool_name" "$build_name")
+        if declare -f zfs_dataset_exists >/dev/null 2>&1 && zfs_dataset_exists "$dataset"; then
+            if [[ "${VERBOSE:-false}" == "true" || "${DEBUG:-false}" == "true" ]]; then
+                log_info "Destroying ZFS dataset: $dataset"
+            fi
+            
+            # Brief wait for container cleanup to fully complete
+            sleep 1
+            
+            if declare -f zfs_destroy_dataset >/dev/null 2>&1; then
+                zfs_destroy_dataset "$dataset" --force
+            else
+                log_debug "zfs_destroy_dataset function not available"
+            fi
+        else
+            log_debug "ZFS dataset does not exist: $dataset"
         fi
-        
-        # Brief wait for container cleanup to fully complete
-        sleep 1
-        
-        zfs_destroy_dataset "$dataset" --force
     else
-        log_debug "ZFS dataset does not exist: $dataset"
+        log_debug "ZFS functions not available for dataset cleanup"
     fi
     
     # Clear status files
     build_clear_status "$build_name"
     
     log_info "Cleanup completed for build: $build_name"
+}
+
+# Clean up all build artifacts in the status directory
+# Usage: build_clean_all_artifacts [--force]
+build_clean_all_artifacts() {
+    local force_clean=false
+    if [[ "$1" == "--force" ]]; then
+        force_clean=true
+        shift
+    fi
+    
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        if [[ "$force_clean" == "true" ]]; then
+            echo "[DRY RUN] Would clean all artifacts in: $STATUS_DIR (including protected files)"
+        else
+            echo "[DRY RUN] Would clean all artifacts in: $STATUS_DIR"
+        fi
+        return 0
+    fi
+    
+    if [[ "$force_clean" == "true" ]]; then
+        echo "Force cleaning all artifacts (including protected files)"
+        run_cmd rm -rf "${STATUS_DIR:?}"/*
+        run_cmd rm -rf "${STATUS_DIR:?}"/.*
+    else
+        echo "Cleaning all build artifacts"
+        run_cmd rm -f "${STATUS_DIR}"/*.status
+        run_cmd rm -f "${STATUS_DIR}"/*.log
+        run_cmd rm -rf "${STATUS_DIR}/temp"
+    fi
 }
 
 # ==============================================================================
@@ -518,12 +590,12 @@ build_log_event() {
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     
-    echo "Logging event for $build_name: $message"
-    
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
         echo "[DRY RUN] Would log event: $message"
         return 0
     fi
+    
+    echo "Logging event for $build_name: $message"
     
     local log_file
     log_file=$(build_get_log_file "$build_name")

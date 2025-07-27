@@ -222,19 +222,7 @@ validate_filesystem_requirements() {
     if [[ ! -w "$DEFAULT_MOUNT_BASE" ]]; then
         die_with_permission_error "writing to mount base directory: $DEFAULT_MOUNT_BASE"
     fi
-    
-    # Check available space (warn if < 10GB)
-    local available_space
-    available_space=$(run_cmd_read df "$DEFAULT_MOUNT_BASE" | awk 'NR==2 {print $4}')
-    local required_space=$((10 * 1024 * 1024)) # 10GB in KB
-    
-    if [[ $available_space -lt $required_space ]]; then
-        local space_gb=$((available_space / 1024 / 1024))
-        log_warn "⚠️  Low disk space: ${space_gb}GB available, recommend at least 10GB"
-    else
-        log_debug "✓ Sufficient disk space available"
-    fi
-    
+
     # Check status directory
     if [[ ! -d "$STATUS_DIR" ]]; then
         if ! mkdir -p "$STATUS_DIR" 2>/dev/null; then

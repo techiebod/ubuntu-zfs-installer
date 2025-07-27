@@ -140,7 +140,13 @@ resolve_dist_info() {
         fi
         DIST_CODENAME=$(_get_ubuntu_codename_for_version "$DIST_VERSION")
         if [[ -z "$DIST_CODENAME" ]]; then
-            die "Could not determine codename for latest Ubuntu version '$DIST_VERSION'."
+            # Fallback for development releases not yet in API
+            if [[ "$DIST_VERSION" == "25.04" ]]; then
+                DIST_CODENAME="plucky"
+                log_info "Using fallback codename 'plucky' for development version 25.04"
+            else
+                die "Could not determine codename for latest Ubuntu version '$DIST_VERSION'."
+            fi
         fi
 
     elif [[ -n "$version_in" && -z "$codename_in" ]]; then
@@ -148,7 +154,13 @@ resolve_dist_info() {
         DIST_VERSION="$version_in"
         DIST_CODENAME=$(_get_ubuntu_codename_for_version "$DIST_VERSION")
         if [[ -z "$DIST_CODENAME" ]]; then
-            die "Could not find a matching codename for Ubuntu version '$DIST_VERSION'."
+            # Fallback for development releases not yet in API
+            if [[ "$DIST_VERSION" == "25.04" ]]; then
+                DIST_CODENAME="plucky"
+                log_info "Using fallback codename 'plucky' for development version 25.04"
+            else
+                die "Could not find a matching codename for Ubuntu version '$DIST_VERSION'."
+            fi
         fi
 
     elif [[ -z "$version_in" && -n "$codename_in" ]]; then
