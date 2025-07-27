@@ -92,7 +92,6 @@ run_cleanup_stack() {
     
     echo "Running cleanup stack"
     local i
-    local failed=false
     for ((i=${#CLEANUP_STACK[@]}-1; i>=0; i--)); do
         local cleanup_cmd="${CLEANUP_STACK[i]}"
         echo "Executing cleanup: $cleanup_cmd"
@@ -100,13 +99,11 @@ run_cleanup_stack() {
             # It's a function
             if ! "$cleanup_cmd"; then
                 echo "Cleanup command failed: $cleanup_cmd"
-                failed=true
             fi
         else
             # It's a shell command
             if ! eval "$cleanup_cmd"; then
                 echo "Cleanup command failed: $cleanup_cmd"
-                failed=true
             fi
         fi
     done

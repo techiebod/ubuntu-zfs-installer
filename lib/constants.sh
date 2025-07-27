@@ -23,6 +23,7 @@ readonly STATUS_VARLOG_MOUNTED="varlog-mounted"
 readonly STATUS_CONTAINER_CREATED="container-created"
 readonly STATUS_ANSIBLE_CONFIGURED="ansible-configured"
 readonly STATUS_COMPLETED="completed"
+# shellcheck disable=SC2034  # Used by build-status.sh and tests
 readonly STATUS_FAILED="failed"
 
 # All valid statuses in progression order
