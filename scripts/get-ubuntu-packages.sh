@@ -26,6 +26,14 @@ source "$lib_dir/logging.sh"       # For log_* functions and die
 source "$lib_dir/dependencies.sh"  # For require_command
 source "$lib_dir/ubuntu-api.sh"    # For get_default_ubuntu_codename
 
+# Load shflags library
+source "$lib_dir/vendor/shflags"
+
+# --- Flag definitions ---
+DEFINE_string 'codename' '' 'Ubuntu release codename (e.g., noble, jammy). If not provided, uses current Ubuntu release' 'c'
+DEFINE_string 'arch' "${DEFAULT_ARCH}" 'Target architecture' 'a'
+DEFINE_boolean 'verbose' false 'Enable verbose output with progress information' 'v'
+
 # Function to fetch Ubuntu package manifests from official sources
 fetch_ubuntu_manifests() {
     local codename="$1"
@@ -156,81 +164,34 @@ parse_seed_content() {
     return 0
 }
 
-# Function to show usage
-show_usage() {
-    cat << EOF
-Usage: $0 [OPTIONS] SEED [SEED...]
-
-Fetch Ubuntu package lists from official sources and output a 
-newline-delimited list of packages from the specified seeds.
-
-OPTIONS:
-    --codename CODENAME     Ubuntu release codename (e.g., noble, jammy).
-                           If not provided, uses the current Ubuntu release.
-    -a, --arch ARCH         Target architecture (default: from global config or amd64).
-    --verbose               Enable verbose output with progress information.
-    --help, -h              Show this help message.
-
-ARGUMENTS:
-    SEED [SEED...]         One or more seed names to fetch packages from.
-
-EXAMPLES:
-    # Get packages from server-minimal seed (uses current Ubuntu release)
-    $0 server-minimal
-
-    # Get packages from multiple seeds  
-    $0 server-minimal server
-
-    # Specify Ubuntu release codename
-    $0 --codename noble server-minimal
-
-    # Enable verbose output
-    $0 --verbose --codename noble server-minimal
-
-    # Generate for different architecture
-    $0 --arch arm64 --codename noble server-minimal
-
-    # Available seeds can be found at:
-    # https://ubuntu-archive-team.ubuntu.com/seeds/ubuntu.CODENAME/
-
-EXIT CODES:
-    0  Success
-    1  Error downloading or parsing manifests
-    2  Invalid arguments
-EOF
-}
-
 # Main function
 main() {
-    local codename=""
-    local arch="$DEFAULT_ARCH"
-    local seeds=()
+    # Parse flags
+    FLAGS "$@" || exit 1
+    eval set -- "${FLAGS_ARGV}"
     
-    # Parse arguments
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            --codename) codename="$2"; shift 2 ;;
-            -a|--arch) arch="$2"; shift 2 ;;
-            --verbose) VERBOSE="true"; shift ;;
-            -h|--help) show_usage; exit 0 ;;
-            -*) die "Unknown option: $1" ;;
-            *) 
-                # Everything is a seed name
-                seeds+=("$1")
-                shift
-                ;;
-        esac
-    done
+    local seeds=("$@")
+    
+    # At least one seed must be specified
+    if [[ ${#seeds[@]} -eq 0 ]]; then
+        echo "USAGE: $0 [flags] args"
+        echo ""
+        echo "At least one seed name must be specified."
+        echo "Run '$0 --help' for detailed usage"
+        echo ""
+        echo "Example: $0 server-minimal"
+        exit 2
+    fi
+    
+    # Set global variables from flags with proper boolean conversion
+    local codename="${FLAGS_codename}"
+    local arch="${FLAGS_arch}"
+    VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
     
     # Get default codename if not provided
     if [[ -z "$codename" ]]; then
         codename=$(get_default_ubuntu_codename 2>/dev/null || echo "plucky")
         [[ "$VERBOSE" == "true" ]] && log_info "Using default codename: $codename"
-    fi
-    
-    # At least one seed must be specified
-    if [[ ${#seeds[@]} -eq 0 ]]; then
-        die "At least one seed name must be specified. Available seeds at: https://ubuntu-archive-team.ubuntu.com/seeds/ubuntu.$codename/"
     fi
     
     # Fetch manifests

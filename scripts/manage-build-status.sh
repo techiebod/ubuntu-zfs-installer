@@ -22,6 +22,15 @@ source "$lib_dir/build-status.sh"    # For build_* functions
 source "$lib_dir/zfs.sh"             # For ZFS operations (used in clean command)
 source "$lib_dir/containers.sh"      # For container operations (used in clean command)
 
+# Load shflags library
+source "$lib_dir/vendor/shflags"
+
+# --- Flag definitions ---
+DEFINE_string 'pool' "${DEFAULT_POOL_NAME}" 'The ZFS pool to operate on' 'p'
+DEFINE_boolean 'verbose' false 'Enable verbose output, showing all command outputs' 'v'
+DEFINE_boolean 'dry_run' false 'Show all commands that would be run without executing them'
+DEFINE_boolean 'debug' false 'Enable detailed debug logging'
+
 # --- Constants ---
 # Constants are now loaded from lib/constants.sh
 
@@ -120,7 +129,7 @@ should_run_stage() {
 # --- Usage Information ---
 show_usage() {
     cat << EOF
-Usage: $0 ACTION [OPTIONS] BUILD_NAME
+Usage: $(basename "$0") [OPTIONS] ACTION [ARGUMENTS]
 
 Manages build status and logs for ZFS build system.
 This script focuses on status tracking and integrates information from other manage-* scripts.
@@ -128,9 +137,9 @@ This script focuses on status tracking and integrates information from other man
 ACTIONS:
   set STATUS BUILD_NAME       Set status for a build
   get BUILD_NAME              Get current status for a build
-  clean BUILD_NAME [POOL]     Complete cleanup - stop container, destroy datasets, clear status
+  clean BUILD_NAME            Complete cleanup - stop container, destroy datasets, clear status
   list                        List all builds with their status
-  show BUILD_NAME [POOL]      Show comprehensive build information (integrates data from other scripts)
+  show BUILD_NAME             Show comprehensive build information (integrates data from other scripts)
   history BUILD_NAME          Show build stage progression and timing history
   log BUILD_NAME MESSAGE      Add a log entry for a build
   next BUILD_NAME             Get next stage that should be run
@@ -146,40 +155,69 @@ VALID STATUSES:
 $(printf "  %s\n" "${VALID_STATUSES[@]}")
   failed
 
+EOF
+    flags_help
+    cat << EOF
+
 EXAMPLES:
   # Set status
-  $0 set datasets-created ubuntu-noble
+  $(basename "$0") set datasets-created ubuntu-noble
 
   # Get current status
-  $0 get ubuntu-noble
+  $(basename "$0") get ubuntu-noble
 
   # Complete cleanup of a build
-  $0 clean ubuntu-noble
-  $0 clean ubuntu-noble tank
+  $(basename "$0") clean ubuntu-noble
+  $(basename "$0") --pool tank clean ubuntu-noble
 
   # Show detailed build information
-  $0 show ubuntu-noble
-  $0 show ubuntu-noble tank
+  $(basename "$0") show ubuntu-noble
+  $(basename "$0") --pool tank show ubuntu-noble
 
   # Show build stage history and timings
-  $0 history ubuntu-noble
+  $(basename "$0") history ubuntu-noble
 
   # Add log entry
-  $0 log ubuntu-noble "Starting custom configuration"
+  $(basename "$0") log ubuntu-noble "Starting custom configuration"
 
   # Check if stage should run
-  $0 should-run os-installed ubuntu-noble
+  $(basename "$0") should-run os-installed ubuntu-noble
 
   # List all builds
-  $0 list
+  $(basename "$0") list
 EOF
-    exit 0
+}
+
+# --- Parse command line arguments ---
+parse_arguments() {
+    # Parse flags
+    FLAGS "$@" || exit 1
+    eval set -- "${FLAGS_ARGV}"
+    
+    # Set global variables from flags with proper boolean conversion
+    POOL_NAME="${FLAGS_pool}"
+    VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
+    DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
+    DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
 }
 
 # --- Main Logic ---
 main() {
+    # Parse arguments first
+    parse_arguments "$@"
+    eval set -- "${FLAGS_ARGV}"
+    
     if [[ $# -eq 0 ]]; then
-        show_usage
+        echo "Usage: $(basename "$0") [OPTIONS] ACTION [ARGUMENTS]"
+        echo ""
+        echo "ACTIONS: set, get, clean, list, show, history, log, next, should-run"
+        echo "Run '$(basename "$0") --help' for detailed usage and flag options"
+        echo ""
+        echo "Examples:"
+        echo "  $(basename "$0") set datasets-created ubuntu-noble"
+        echo "  $(basename "$0") get ubuntu-noble"
+        echo "  $(basename "$0") list"
+        exit 1
     fi
 
     local action="$1"
@@ -188,27 +226,26 @@ main() {
     case "$action" in
         set)
             if [[ $# -ne 2 ]]; then
-                die "Usage: $0 set STATUS BUILD_NAME"
+                die "Usage: $(basename "$0") set STATUS BUILD_NAME"
             fi
             set_status "$1" "$2"
             ;;
         get)
             if [[ $# -ne 1 ]]; then
-                die "Usage: $0 get BUILD_NAME"
+                die "Usage: $(basename "$0") get BUILD_NAME"
             fi
             get_status "$1"
             ;;
         clean)
             if [[ $# -lt 1 ]]; then
-                die "Usage: $0 clean BUILD_NAME [POOL]"
+                die "Usage: $(basename "$0") clean BUILD_NAME"
             fi
-            local pool_name="${2:-$DEFAULT_POOL_NAME}"
-            clean_build "$1" "$pool_name"
+            clean_build "$1" "$POOL_NAME"
             ;;
         clear)
             # Internal command - not documented in usage
             if [[ $# -ne 1 ]]; then
-                die "Usage: $0 clear BUILD_NAME"
+                die "Usage: $(basename "$0") clear BUILD_NAME"
             fi
             clear_status "$1"
             ;;
@@ -217,26 +254,25 @@ main() {
             ;;
         show)
             if [[ $# -lt 1 ]]; then
-                die "Usage: $0 show BUILD_NAME [POOL]"
+                die "Usage: $(basename "$0") show BUILD_NAME"
             fi
-            local pool_name="${2:-$DEFAULT_POOL_NAME}"
-            show_build_details "$1" "$pool_name"
+            show_build_details "$1" "$POOL_NAME"
             ;;
         history)
             if [[ $# -ne 1 ]]; then
-                die "Usage: $0 history BUILD_NAME"
+                die "Usage: $(basename "$0") history BUILD_NAME"
             fi
             show_build_history "$1"
             ;;
         log)
             if [[ $# -ne 2 ]]; then
-                die "Usage: $0 log BUILD_NAME MESSAGE"
+                die "Usage: $(basename "$0") log BUILD_NAME MESSAGE"
             fi
             log_build_event "$1" "$2"
             ;;
         next)
             if [[ $# -ne 1 ]]; then
-                die "Usage: $0 next BUILD_NAME"
+                die "Usage: $(basename "$0") next BUILD_NAME"
             fi
             local current_status
             current_status=$(get_status "$1")
@@ -246,7 +282,7 @@ main() {
             ;;
         should-run)
             if [[ $# -lt 2 ]]; then
-                die "Usage: $0 should-run STAGE BUILD_NAME [force]"
+                die "Usage: $(basename "$0") should-run STAGE BUILD_NAME [force]"
             fi
             local force="${3:-false}"
             if should_run_stage "$1" "$2" "$force"; then
@@ -256,9 +292,6 @@ main() {
                 echo "no"
                 exit 1
             fi
-            ;;
-        --help|-h)
-            show_usage
             ;;
         *)
             die "Unknown action: $action. Use --help for usage information."

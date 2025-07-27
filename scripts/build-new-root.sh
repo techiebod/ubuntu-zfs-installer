@@ -29,26 +29,32 @@ source "$lib_dir/zfs.sh"             # For ZFS operations
 source "$lib_dir/containers.sh"      # For container operations
 source "$lib_dir/build-status.sh"    # For build orchestration
 
-# --- Script-specific Default values ---
-# These are defaults for this script, which can be overridden by command-line args.
+# Load shflags library for standardized argument parsing
+source "$lib_dir/vendor/shflags"
+
+# Load shflags library for standardized argument parsing
+source "$lib_dir/vendor/shflags"
+
+# --- Flag Definitions ---
+# Define all command-line flags with defaults and descriptions
+DEFINE_string 'distribution' "${DEFAULT_DISTRIBUTION}" 'Distribution to build (e.g., ubuntu, debian)' 'd'
+DEFINE_string 'version' '' 'Distribution version (e.g., 25.04, 12)' 'v'
+DEFINE_string 'codename' '' 'Distribution codename (e.g., noble, bookworm)' 'c'
+DEFINE_string 'arch' "${DEFAULT_ARCH}" 'Target architecture' 'a'
+DEFINE_string 'pool' "${DEFAULT_POOL_NAME}" 'ZFS pool to use' 'p'
+DEFINE_string 'profile' "${DEFAULT_INSTALL_PROFILE:-minimal}" 'Package installation profile (minimal, standard, full)'
+DEFINE_string 'tags' '' 'Comma-separated list of Ansible tags to run' 't'
+DEFINE_string 'limit' '' 'Ansible limit pattern (default: HOSTNAME)' 'l'
+DEFINE_boolean 'snapshots' true 'Create ZFS snapshots after major build stages'
+DEFINE_boolean 'restart' false 'Force restart from beginning, ignoring existing build status'
+DEFINE_boolean 'verbose' false 'Enable verbose output, showing all command outputs'
+DEFINE_boolean 'dry_run' false 'Show all commands that would be run without executing them'
+DEFINE_boolean 'debug' false 'Enable detailed debug logging'
+
+# --- Script-specific Variables ---
+# These will be set based on positional arguments
 BUILD_NAME=""
 HOSTNAME=""
-DISTRIBUTION="${DEFAULT_DISTRIBUTION}"
-VERSION=""
-CODENAME=""
-ARCH="${DEFAULT_ARCH}"
-INSTALL_PROFILE="${DEFAULT_INSTALL_PROFILE:-minimal}"
-POOL_NAME="${DEFAULT_POOL_NAME}"
-ANSIBLE_TAGS=""
-ANSIBLE_LIMIT=""
-# --- Configuration ---
-DRY_RUN=false
-# shellcheck disable=SC2034  # Set by argument parsing, used by common functions
-VERBOSE=false
-# shellcheck disable=SC2034  # Set by argument parsing, used by common functions
-DEBUG=false
-CREATE_SNAPSHOTS=true
-FORCE_RESTART=false
 
 # --- Usage Information ---
 show_usage() {
@@ -63,23 +69,10 @@ ARGUMENTS:
   HOSTNAME                The target hostname. A corresponding Ansible host_vars file
                           (config/host_vars/HOSTNAME.yml) must exist.
 
-OPTIONS:
-  -d, --distribution DIST Distribution to build (default: ${DEFAULT_DISTRIBUTION}).
-  -v, --version VERSION   Distribution version (e.g., 25.04, 12).
-  -c, --codename CODENAME Distribution codename (e.g., noble, bookworm).
-                          For Ubuntu, you can specify either version or codename.
-  -a, --arch ARCH         Target architecture (default: ${DEFAULT_ARCH}).
-  -p, --pool POOL         ZFS pool to use (default: ${DEFAULT_POOL_NAME}).
-      --profile PROFILE   Package installation profile (minimal, standard, full; default: ${DEFAULT_INSTALL_PROFILE:-minimal}).
-  -t, --tags TAGS         Comma-separated list of Ansible tags to run.
-  -l, --limit PATTERN     Ansible limit pattern (default: HOSTNAME).
-      --snapshots         Create ZFS snapshots after major build stages (default: enabled).
-      --no-snapshots      Disable ZFS snapshot creation for faster builds.
-      --restart           Force restart from beginning, ignoring existing build status.
-      --verbose           Enable verbose output, showing all command outputs.
-      --dry-run           Show all commands that would be run without executing them.
-      --debug             Enable detailed debug logging.
-  -h, --help              Show this help message.
+EOF
+    echo "OPTIONS:"
+    flags_help
+    cat << EOF
 
 EXAMPLES:
   # Build an Ubuntu 24.04 system for host 'blackbox'
@@ -89,69 +82,65 @@ EXAMPLES:
   $0 --version 24.04 --profile standard ubuntu-server blackbox
 
   # Build a Debian 12 system, cleaning up any previous build with the same name
-    # Build a Debian system
   $0 --distribution debian --version 12 debian-bookworm my-server
 
   # Perform a dry run to see all the steps for a new build
-  $0 --dry-run --codename noble ubuntu-test test-host
+  $0 --dry_run --codename noble ubuntu-test test-host
 
 REQUIREMENTS:
   - Docker must be installed and running for the OS installation stage.
   - The target ZFS pool must exist.
   - An Ansible host variables file must exist at 'config/host_vars/HOSTNAME.yml'.
 EOF
-    exit 0
 }
 
 # --- Argument Parsing ---
 parse_args() {
-    local remaining_args=()
+    # Parse flags and return non-flag arguments
+    FLAGS "$@" || exit 1
+    eval set -- "${FLAGS_ARGV}"
     
-    # First pass: handle common arguments
-    parse_common_args remaining_args "$@"
+    # Process positional arguments
+    if [[ $# -lt 2 ]]; then
+        echo "Error: Missing required arguments BUILD_NAME and HOSTNAME" >&2
+        echo ""
+        show_usage
+        exit 1
+    fi
     
-    # Second pass: handle script-specific arguments
-    local args=("${remaining_args[@]}")
+    BUILD_NAME="$1"
+    HOSTNAME="$2"
     
-    while [[ ${#args[@]} -gt 0 ]]; do
-        case "${args[0]}" in
-            -d|--distribution) DISTRIBUTION="${args[1]}"; args=("${args[@]:2}") ;;
-            -v|--version) VERSION="${args[1]}"; args=("${args[@]:2}") ;;
-            -c|--codename) CODENAME="${args[1]}"; args=("${args[@]:2}") ;;
-            -a|--arch) ARCH="${args[1]}"; args=("${args[@]:2}") ;;
-            -p|--pool) POOL_NAME="${args[1]}"; args=("${args[@]:2}") ;;
-            --profile) INSTALL_PROFILE="${args[1]}"; args=("${args[@]:2}") ;;
-            -t|--tags) ANSIBLE_TAGS="${args[1]}"; args=("${args[@]:2}") ;;
-            -l|--limit) ANSIBLE_LIMIT="${args[1]}"; args=("${args[@]:2}") ;;
-            --snapshots) CREATE_SNAPSHOTS=true; args=("${args[@]:1}") ;;
-            --no-snapshots) CREATE_SNAPSHOTS=false; args=("${args[@]:1}") ;;
-            --restart) FORCE_RESTART=true; args=("${args[@]:1}") ;;
-            -h|--help) show_usage ;;
-            -*) die "Unknown option: ${args[0]}" ;;
-            *)
-                if [[ -z "$BUILD_NAME" ]]; then
-                    BUILD_NAME="${args[0]}"
-                elif [[ -z "$HOSTNAME" ]]; then
-                    HOSTNAME="${args[0]}"
-                else
-                    die "Too many arguments. Expected BUILD_NAME and HOSTNAME."
-                fi
-                args=("${args[@]:1}")
-                ;;
-        esac
-    done
+    # Check for extra arguments
+    if [[ $# -gt 2 ]]; then
+        echo "Error: Too many arguments. Expected BUILD_NAME and HOSTNAME." >&2
+        echo ""
+        show_usage
+        exit 1
+    fi
+    
+    # Set global variables from flags for compatibility with existing code
+    DISTRIBUTION="${FLAGS_distribution}"
+    VERSION="${FLAGS_version}"
+    CODENAME="${FLAGS_codename}"
+    ARCH="${FLAGS_arch}"
+    POOL_NAME="${FLAGS_pool}"
+    INSTALL_PROFILE="${FLAGS_profile}"
+    ANSIBLE_TAGS="${FLAGS_tags}"
+    ANSIBLE_LIMIT="${FLAGS_limit}"
+    # Convert shflags boolean values (0=true, 1=false) to traditional bash boolean
+    CREATE_SNAPSHOTS=$([ "${FLAGS_snapshots}" -eq 0 ] && echo "true" || echo "false")
+    FORCE_RESTART=$([ "${FLAGS_restart}" -eq 0 ] && echo "true" || echo "false")
+    VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
+    DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
+    DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
 }
 
 # --- Prerequisite Checks ---
 check_prerequisites() {
     log_debug "Starting prerequisite validation"
 
-    # Validate input arguments
-    if [[ -z "$BUILD_NAME" || -z "$HOSTNAME" ]]; then
-        show_usage
-        die "Missing required arguments: BUILD_NAME and HOSTNAME."
-    fi
-    
+    # Validate input arguments (BUILD_NAME and HOSTNAME are already checked in parse_args)
     validate_build_name "$BUILD_NAME" "build name"
     validate_hostname "$HOSTNAME"
     validate_architecture "$ARCH"
@@ -182,7 +171,7 @@ check_prerequisites() {
 # --- Helper to create snapshots ---
 take_snapshot() {
     local stage="$1"
-    if [[ "$CREATE_SNAPSHOTS" != true ]]; then
+    if [[ "$CREATE_SNAPSHOTS" -ne 0 ]]; then
         return 0
     fi
 
@@ -212,10 +201,12 @@ clear_build_status() {
 
 # --- Main Build Logic ---
 main() {
-    # Set up cleanup handling
+    parse_args "$@"
+    
+    # Set up cleanup handling only after confirming we're doing actual work
+    # (not just showing help or validating arguments)
     setup_cleanup_trap
     
-    parse_args "$@"
     check_prerequisites
 
     # Define container name used throughout the build process
@@ -246,9 +237,9 @@ main() {
     log_info "  🏗️  Architecture:   $ARCH"
     log_info "  🎯 Ansible Tags:   ${ANSIBLE_TAGS:-'(none)'}"
     log_info "  🎭 Ansible Limit:  $ANSIBLE_LIMIT"
-    log_info "  📸 Snapshots:      $CREATE_SNAPSHOTS"
-    log_info "  🔄 Force Restart:  $FORCE_RESTART"
-    log_info "  🧪 Dry Run:        $DRY_RUN"
+    log_info "  📸 Snapshots:      $([ "$CREATE_SNAPSHOTS" -eq 0 ] && echo "true" || echo "false")"
+    log_info "  🔄 Force Restart:  $([ "$FORCE_RESTART" -eq 0 ] && echo "true" || echo "false")"
+    log_info "  🧪 Dry Run:        $([ "$DRY_RUN" -eq 0 ] && echo "true" || echo "false")"
 
     # Log build start (this goes to both console and file)
     log_build_event "Build initiated: $DISTRIBUTION $DIST_VERSION ($ARCH) → hostname '$HOSTNAME' on pool '$POOL_NAME'"
@@ -258,7 +249,7 @@ main() {
     current_status=$(check_build_status)
     if [[ -n "$current_status" ]]; then
         log_info "Current build status: $current_status"
-        if [[ "$FORCE_RESTART" == true ]]; then
+        if [[ "$FORCE_RESTART" -eq 0 ]]; then
             log_info "Force restart requested - clearing build status"
             clear_build_status
             current_status=""

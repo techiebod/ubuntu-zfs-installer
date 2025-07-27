@@ -520,7 +520,7 @@ The project includes comprehensive CI/CD with:
 ### Common Library Features
 
 - **Smart distribution validation** with online Ubuntu release checking
-- **Consistent flag handling** across all scripts
+- **Consistent flag handling** across all scripts using [shflags](lib/vendor/SHFLAGS_STANDARDS.md)
 - **Proper error handling** with detailed messages
 - **Dry-run support** for safe testing
 - **Centralized logging** with debug levels
@@ -720,3 +720,11 @@ This system provides enterprise-grade boot environment management with professio
 ---
 
 Built for automation, reproducibility, and simplicity. Designed for ZFS-based Ubuntu systems with proper boot environment management.
+
+## 📄 License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+This project includes third-party software:
+- **shflags** by Kate Ward - Apache License 2.0
+- See [NOTICE](NOTICE) file for full attribution

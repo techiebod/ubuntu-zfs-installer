@@ -23,13 +23,22 @@ source "$lib_dir/zfs.sh"             # For ZFS operations (mount paths)
 source "$lib_dir/containers.sh"      # For container operations (primary functionality)
 source "$lib_dir/build-status.sh"    # For build status integration
 
-# --- Script-specific Default values ---
+# Load shflags library for standardized argument parsing
+source "$lib_dir/vendor/shflags"
+
+# --- Flag Definitions ---
+# Define all command-line flags with defaults and descriptions
+DEFINE_string 'pool' "${DEFAULT_POOL_NAME}" 'ZFS pool where the build dataset resides' 'p'
+DEFINE_string 'name' '' 'Container name (default: BUILD_NAME)' 'n'
+DEFINE_string 'hostname' '' 'Hostname to set in container (default: BUILD_NAME)'
+DEFINE_string 'install_packages' '' 'Comma-separated list of packages to install during create'
+DEFINE_boolean 'verbose' false 'Enable verbose output, showing all command outputs'
+DEFINE_boolean 'dry_run' false 'Show all commands that would be run without executing them'
+DEFINE_boolean 'debug' false 'Enable detailed debug logging'
+
+# --- Script-specific Variables ---
 ACTION=""
 BUILD_NAME=""
-CONTAINER_NAME=""
-POOL_NAME="${DEFAULT_POOL_NAME}"
-HOSTNAME=""
-INSTALL_PACKAGES=""
 EXEC_COMMAND=""
 
 # --- Usage Information ---
@@ -51,19 +60,14 @@ ACTIONS:
 ARGUMENTS:
   BUILD_NAME              The name of the build/dataset (e.g., ubuntu-noble).
 
-OPTIONS:
-  -p, --pool POOL         ZFS pool where the build dataset resides (default: ${DEFAULT_POOL_NAME}).
-  -n, --name NAME         Container name (default: BUILD_NAME).
-  -h, --hostname HOST     Hostname to set in container (default: BUILD_NAME).
-  --install-packages LIST Comma-separated list of packages to install during create.
-      --verbose           Enable verbose output.
-      --dry-run           Show commands without executing them.
-      --debug             Enable detailed debug logging.
-  -h, --help              Show this help message.
+EOF
+    echo "OPTIONS:"
+    flags_help
+    cat << EOF
 
 EXAMPLES:
   # Create container and install Ansible
-  $0 create --install-packages ansible,python3-apt ubuntu-noble
+  $0 create --install_packages ansible,python3-apt ubuntu-noble
 
   # Start container
   $0 start ubuntu-noble
@@ -77,62 +81,74 @@ EXAMPLES:
   # List all containers
   $0 list
 EOF
-    exit 0
 }
 
 # --- Argument Parsing ---
 parse_args() {
-    local remaining_args=()
+    # Parse flags and return non-flag arguments
+    FLAGS "$@" || exit 1
+    eval set -- "${FLAGS_ARGV}"
     
-    # First pass: handle common arguments
-    parse_common_args remaining_args "$@"
-    
-    if [[ ${#remaining_args[@]} -eq 0 ]]; then
+    # Process positional arguments
+    if [[ $# -eq 0 ]]; then
+        echo "Error: No action specified." >&2
+        echo ""
         show_usage
+        exit 1
     fi
 
-    # Check for help first
-    if [[ "${remaining_args[0]}" == "--help" || "${remaining_args[0]}" == "-h" ]]; then
-        show_usage
-    fi
+    ACTION="$1"
+    shift
 
-    ACTION="${remaining_args[0]}"
-    local args=("${remaining_args[@]:1}")
-
-    local positional_args=()
-
-    while [[ ${#args[@]} -gt 0 ]]; do
-        case "${args[0]}" in
-            -p|--pool) POOL_NAME="${args[1]}"; args=("${args[@]:2}") ;;
-            -n|--name) CONTAINER_NAME="${args[1]}"; args=("${args[@]:2}") ;;
-            -h|--hostname) HOSTNAME="${args[1]}"; args=("${args[@]:2}") ;;
-            --install-packages) INSTALL_PACKAGES="${args[1]}"; args=("${args[@]:2}") ;;
-            --help) show_usage ;;
-            -*) die "Unknown option: ${args[0]}" ;;
-            *) positional_args+=("${args[0]}"); args=("${args[@]:1}") ;;
-        esac
-    done
-
-    if [[ "$ACTION" != "list" && "$ACTION" != "exec" ]]; then
-        if [[ ${#positional_args[@]} -ne 1 ]]; then
-            die "Invalid number of arguments. Expected BUILD_NAME."
-        fi
-        BUILD_NAME="${positional_args[0]}"
-    elif [[ "$ACTION" == "exec" ]]; then
-        if [[ ${#positional_args[@]} -lt 2 ]]; then
-            die "exec action requires BUILD_NAME and COMMAND arguments."
-        fi
-        BUILD_NAME="${positional_args[0]}"
-        # Build command from remaining positional arguments
-        for ((i=1; i<${#positional_args[@]}; i++)); do
-            if [[ -n "$EXEC_COMMAND" ]]; then
-                EXEC_COMMAND="$EXEC_COMMAND ${positional_args[i]}"
-            else
-                EXEC_COMMAND="${positional_args[i]}"
+    # Validate action and handle arguments based on action type
+    case "$ACTION" in
+        list)
+            if [[ $# -ne 0 ]]; then
+                echo "Error: Action 'list' takes no additional arguments." >&2
+                echo ""
+                show_usage
+                exit 1
             fi
-        done
-    fi
-
+            ;;
+        exec)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: Action 'exec' requires BUILD_NAME and COMMAND arguments." >&2
+                echo ""
+                show_usage
+                exit 1
+            fi
+            BUILD_NAME="$1"
+            shift
+            # Remaining arguments form the command
+            EXEC_COMMAND="$*"
+            ;;
+        create|start|stop|destroy|shell)
+            if [[ $# -ne 1 ]]; then
+                echo "Error: Action '$ACTION' requires exactly one BUILD_NAME argument." >&2
+                echo ""
+                show_usage
+                exit 1
+            fi
+            BUILD_NAME="$1"
+            ;;
+        *)
+            echo "Error: Unknown action: $ACTION" >&2
+            echo ""
+            show_usage
+            exit 1
+            ;;
+    esac
+    
+    # Set global variables from flags for compatibility with existing code
+    POOL_NAME="${FLAGS_pool}"
+    CONTAINER_NAME="${FLAGS_name}"
+    HOSTNAME="${FLAGS_hostname}"
+    INSTALL_PACKAGES="${FLAGS_install_packages}"
+    # Convert shflags boolean values (0=true, 1=false) to traditional bash boolean
+    VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
+    DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
+    DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
+    
     # Set defaults
     if [[ -z "$CONTAINER_NAME" ]]; then
         CONTAINER_NAME="$BUILD_NAME"

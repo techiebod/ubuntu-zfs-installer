@@ -23,11 +23,20 @@ source "$lib_dir/validation.sh"      # For build name validation
 source "$lib_dir/zfs.sh"             # For ZFS operations (primary functionality)
 source "$lib_dir/build-status.sh"    # For build status integration
 
-# --- Script-specific Default values ---
-POOL_NAME="${DEFAULT_POOL_NAME}"
-MOUNT_BASE="${DEFAULT_MOUNT_BASE}"
-CLEANUP=false
-FORCE_DESTROY=false
+# Load shflags library for standardized argument parsing
+source "$lib_dir/vendor/shflags"
+
+# --- Flag Definitions ---
+# Define all command-line flags with defaults and descriptions
+DEFINE_string 'pool' "${DEFAULT_POOL_NAME}" 'The ZFS pool to operate on' 'p'
+DEFINE_string 'mount_base' "${DEFAULT_MOUNT_BASE}" 'Base directory where datasets are mounted for building' 'm'
+DEFINE_boolean 'cleanup' false 'When creating, destroy any existing dataset with the same name first'
+DEFINE_boolean 'force' false 'For destroy, bypass the confirmation prompt'
+DEFINE_boolean 'verbose' false 'Enable verbose output, showing all command outputs'
+DEFINE_boolean 'dry_run' false 'Show all commands that would be run without executing them'
+DEFINE_boolean 'debug' false 'Enable detailed debug logging'
+
+# --- Script-specific Variables ---
 ACTION=""
 BUILD_NAME=""
 
@@ -63,14 +72,10 @@ ARGUMENTS:
   NAME                    The name for the root dataset (e.g., ubuntu-25.04).
                           Required for all actions except 'list'.
 
-OPTIONS:
-  -p, --pool POOL         The ZFS pool to operate on (default: ${DEFAULT_POOL_NAME}).
-  -m, --mount-base PATH   The base directory where datasets are mounted for building
-                          (default: ${DEFAULT_MOUNT_BASE}).
-      --cleanup           When creating, destroy any existing dataset with the same name first.
-      --force             For 'destroy', bypass the confirmation prompt.
-
-$(show_common_options_help)
+EOF
+    echo "OPTIONS:"
+    flags_help
+    cat << EOF
 
 EXAMPLES:
   # List all current root datasets
@@ -85,7 +90,6 @@ EXAMPLES:
   # Destroy an old or experimental build
   $0 destroy ubuntu-old --force
 EOF
-    exit 0
 }
 
 # --- Function to unmount a root dataset from the build area ---
@@ -211,7 +215,7 @@ destroy_dataset() {
             log_warn "This will permanently destroy '${dataset}'."
         fi
 
-        if ! $FORCE_DESTROY && ! confirm "Are you sure you want to continue?"; then
+        if [[ "$FORCE_DESTROY" != "true" ]] && ! confirm "Are you sure you want to continue?"; then
             die "Destruction of '${dataset}' aborted by user."
         fi
     fi
@@ -324,52 +328,56 @@ list_root_datasets() {
 
 # --- Argument Parsing ---
 parse_args() {
-    local remaining_args=()
+    # Parse flags and return non-flag arguments
+    FLAGS "$@" || exit 1
+    eval set -- "${FLAGS_ARGV}"
     
-    # First pass: handle common arguments
-    parse_common_args remaining_args "$@"
-    
-    # Second pass: handle script-specific arguments
-    local positional_args=()
-    local args=("${remaining_args[@]}")
-    
-    while [[ ${#args[@]} -gt 0 ]]; do
-        case "${args[0]}" in
-            -p|--pool) POOL_NAME="${args[1]}"; args=("${args[@]:2}") ;;
-            -m|--mount-base) MOUNT_BASE="${args[1]}"; args=("${args[@]:2}") ;;
-            --cleanup) CLEANUP=true; args=("${args[@]:1}") ;;
-            --force) FORCE_DESTROY=true; args=("${args[@]:1}") ;;
-            -h|--help) show_usage; exit 0 ;;
-            -*) die "Unknown option: ${args[0]}" ;;
-            *) positional_args+=("${args[0]}"); args=("${args[@]:1}") ;;
-        esac
-    done
-
     # Process positional arguments
-    if [[ ${#positional_args[@]} -eq 0 ]]; then
+    if [[ $# -eq 0 ]]; then
+        echo "Error: No action specified." >&2
+        echo ""
         show_usage
-        die "No action specified."
+        exit 1
     fi
 
-    ACTION="${positional_args[0]}"
+    ACTION="$1"
+    shift
 
     case "$ACTION" in
         list)
-            if [[ ${#positional_args[@]} -ne 1 ]]; then
-                die "Action 'list' takes no other arguments."
+            if [[ $# -ne 0 ]]; then
+                echo "Error: Action 'list' takes no other arguments." >&2
+                echo ""
+                show_usage
+                exit 1
             fi
             ;;
         create|destroy|promote|unmount|mount-varlog)
-            if [[ ${#positional_args[@]} -ne 2 ]]; then
+            if [[ $# -ne 1 ]]; then
+                echo "Error: Action '$ACTION' requires a NAME argument." >&2
+                echo ""
                 show_usage
-                die "Action '$ACTION' requires a NAME argument."
+                exit 1
             fi
-            BUILD_NAME="${positional_args[1]}"
+            BUILD_NAME="$1"
             ;;
         *)
-            die "Unknown action: $ACTION"
+            echo "Error: Unknown action: $ACTION" >&2
+            echo ""
+            show_usage
+            exit 1
             ;;
     esac
+    
+    # Set global variables from flags for compatibility with existing code
+    POOL_NAME="${FLAGS_pool}"
+    MOUNT_BASE="${FLAGS_mount_base}"
+    # Convert shflags boolean values (0=true, 1=false) to traditional bash boolean
+    CLEANUP=$([ "${FLAGS_cleanup}" -eq 0 ] && echo "true" || echo "false")
+    FORCE_DESTROY=$([ "${FLAGS_force}" -eq 0 ] && echo "true" || echo "false")
+    VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
+    DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
+    DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
 }
 
 # --- Main Logic ---
@@ -392,11 +400,11 @@ main() {
             local mount_point="${MOUNT_BASE}/${BUILD_NAME}"
 
             if zfs_root_dataset_exists "$POOL_NAME" "$BUILD_NAME"; then
-                if [[ "$CLEANUP" == true ]]; then
+                if [[ "$CLEANUP" == "true" ]]; then
                     log_warn "Root dataset '$BUILD_NAME' already exists. Destroying it due to --cleanup flag."
                     # Temporarily set force flag for the destroy operation
                     local original_force=$FORCE_DESTROY
-                    FORCE_DESTROY=true
+                    FORCE_DESTROY="true"
                     destroy_dataset "$BUILD_NAME" "$POOL_NAME" "$MOUNT_BASE"
                     FORCE_DESTROY=$original_force
                 else

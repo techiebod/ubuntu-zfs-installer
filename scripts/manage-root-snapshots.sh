@@ -23,8 +23,14 @@ source "$lib_dir/validation.sh"      # For build name validation
 source "$lib_dir/dependencies.sh"    # For require_command (zfs)
 source "$lib_dir/zfs.sh"             # For ZFS operations (primary functionality)
 
-# --- Script-specific Default values ---
-POOL_NAME="${DEFAULT_POOL_NAME}"
+# Load shflags library
+source "$lib_dir/vendor/shflags"
+
+# --- Flag definitions ---
+DEFINE_string 'pool' "${DEFAULT_POOL_NAME}" 'The ZFS pool to operate on' 'p'
+DEFINE_boolean 'verbose' false 'Enable verbose output, showing all command outputs' 'v'
+DEFINE_boolean 'dry_run' false 'Show all commands that would be run without executing them'
+DEFINE_boolean 'debug' false 'Enable detailed debug logging'
 
 # --- Function to create a snapshot without timestamp ---
 create_snapshot() {
@@ -141,27 +147,26 @@ Usage: $0 [OPTIONS] <ACTION> <NAME> [ARGUMENT]
 Manage ZFS snapshots for root datasets.
 
 ACTIONS:
-  create <NAME> <stage>       Create a snapshot for a build stage.
-                              'stage' is a descriptive name (e.g., 'base-os').
+  create NAME STAGE        Create a snapshot for a build stage.
+                              'STAGE' is a descriptive name (e.g., 'base-os').
 
-  list <NAME> [pattern]       List snapshots for a root dataset.
-                              'pattern' filters by snapshot name.
+  list NAME [PATTERN]      List snapshots for a root dataset.
+                              'PATTERN' filters by snapshot name.
 
-  rollback <NAME> <snapshot>  Rollback to a specific snapshot.
-                              'snapshot' is the full name (e.g., build-stage-base-os-...).
+  rollback NAME SNAPSHOT   Rollback to a specific snapshot.
+                              'SNAPSHOT' is the full name (e.g., build-stage-base-os-...).
 
-  cleanup <NAME> <stage>      Remove old snapshots for a stage, keeping the last 3.
+  cleanup NAME STAGE       Remove old snapshots for a stage, keeping the last 3.
 
 ARGUMENTS:
   NAME                        The name of the root dataset (e.g., 'plucky').
-  stage                       A short name for the build stage (e.g., 'base-os', 'ansible-done').
-  snapshot                    The full name of the snapshot to roll back to.
-  pattern                     A pattern to filter snapshot names in the list action.
+  STAGE                       A short name for the build stage (e.g., 'base-os', 'ansible-done').
+  SNAPSHOT                    The full name of the snapshot to roll back to.
+  PATTERN                     A pattern to filter snapshot names in the list action.
 
-OPTIONS:
-  -p, --pool POOL             The ZFS pool to operate on (default: ${DEFAULT_POOL_NAME}).
-
-$(show_common_options_help)
+EOF
+    flags_help
+    cat << EOF
 
 EXAMPLES:
   # Create a snapshot after base OS installation for 'plucky'
@@ -176,48 +181,62 @@ EXAMPLES:
   # Clean up old 'base-os' snapshots for 'plucky'
   $0 cleanup plucky base-os
 EOF
-    exit 0
+}
+
+# --- Parse command line arguments ---
+parse_arguments() {
+    # Parse flags
+    FLAGS "$@" || exit 1
+    eval set -- "${FLAGS_ARGV}"
+    
+    # Set global variables from flags with proper boolean conversion
+    POOL_NAME="${FLAGS_pool}"
+    VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
+    DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
+    DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
 }
 
 # --- Main function ---
 main() {
+    # Parse arguments
+    parse_arguments "$@"
+    eval set -- "${FLAGS_ARGV}"
+    
     # For list action, disable timestamps for cleaner output
     [[ "${1:-}" == "list" ]] && export LOG_WITH_TIMESTAMPS=false
 
-    local remaining_args=()
-    
-    # First pass: handle common arguments
-    parse_common_args remaining_args "$@"
-    
     local action=""
     local root_name=""
     local argument=""
-    local args=("${remaining_args[@]}")
 
-    # Argument parsing
-    while [[ ${#args[@]} -gt 0 ]]; do
-        case "${args[0]}" in
-            -p|--pool) POOL_NAME="${args[1]}"; args=("${args[@]:2}") ;;
-            -h|--help) show_usage ;;
-            -*) die "Unknown option: ${args[0]}" ;;
-            *)
-                if [[ -z "$action" ]]; then
-                    action="${args[0]}"
-                elif [[ -z "$root_name" ]]; then
-                    root_name="${args[0]}"
-                elif [[ -z "$argument" ]]; then
-                    argument="${args[0]}"
-                else
-                    die "Too many arguments."
-                fi
-                args=("${args[@]:1}")
-                ;;
-        esac
-    done
+    # Parse positional arguments
+    if [[ $# -gt 0 ]]; then
+        action="$1"
+        shift
+    fi
+    
+    if [[ $# -gt 0 ]]; then
+        root_name="$1"
+        shift
+    fi
+    
+    if [[ $# -gt 0 ]]; then
+        argument="$1"
+        shift
+    fi
 
     # Validate required arguments
     if [[ -z "$action" || -z "$root_name" ]]; then
-        show_usage
+        echo "Usage: $(basename "$0") [OPTIONS] <ACTION> <NAME> [ARGUMENT]"
+        echo ""
+        echo "ACTIONS: create, list, rollback, cleanup"
+        echo "Run '$(basename "$0") --help' for flag options"
+        echo ""
+        echo "Examples:"
+        echo "  $(basename "$0") create plucky base-os"
+        echo "  $(basename "$0") list plucky"
+        echo "  $(basename "$0") rollback plucky build-stage-base-os-20250723-143022"
+        echo "  $(basename "$0") cleanup plucky base-os"
         die "Missing required arguments: action and/or name."
     fi
 
@@ -259,6 +278,4 @@ main() {
 }
 
 # --- Execute Main Function ---
-(
-    main "$@"
-)
+main "$@"

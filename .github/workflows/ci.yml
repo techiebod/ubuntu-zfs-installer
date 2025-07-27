@@ -164,10 +164,21 @@ jobs:
     - name: Run unit tests
       run: ./tools/bats.sh test/unit/
       
+  vendor-check:
+    name: Vendor Dependencies
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check vendored dependencies
+      run: ./tools/check-vendor-versions.sh
+      
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [shellcheck, yaml-check, syntax-check, script-permissions, documentation-check, unit-tests]
+    needs: [shellcheck, yaml-check, syntax-check, script-permissions, documentation-check, unit-tests, vendor-check]
     if: always()
     
     steps:
@@ -183,6 +194,7 @@ jobs:
         echo "| Permissions | ${{ needs.script-permissions.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Documentation | ${{ needs.documentation-check.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Unit Tests | ${{ needs.unit-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Vendor Dependencies | ${{ needs.vendor-check.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [[ "${{ needs.shellcheck.result }}" != "success" ]]; then

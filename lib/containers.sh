@@ -476,7 +476,12 @@ container_list_all() {
     log_info "Listing all systemd-nspawn containers..."
     
     if command -v machinectl &>/dev/null; then
-        run_cmd machinectl list
+        # For listing, we want to see the output even in non-verbose mode
+        if [[ "${DRY_RUN:-false}" == true ]]; then
+            log_info "[DRY-RUN] machinectl list"
+        else
+            machinectl list
+        fi
     else
         log_warn "machinectl not available - cannot list containers"
         return 1

@@ -26,14 +26,23 @@ source "$lib_dir/zfs.sh"             # For ZFS dataset paths
 source "$lib_dir/containers.sh"      # For container operations
 source "$lib_dir/build-status.sh"    # For build status integration
 
-# --- Script-specific Default values ---
-PLAYBOOK="site.yml"
-INVENTORY="inventory"
-ANSIBLE_TAGS=""
-ANSIBLE_LIMIT=""
+# Load shflags library for standardized argument parsing
+source "$lib_dir/vendor/shflags"
+
+# --- Flag Definitions ---
+# Define all command-line flags with defaults and descriptions
+DEFINE_string 'pool' "${DEFAULT_POOL_NAME}" 'ZFS pool where the build dataset resides' 'p'
+DEFINE_string 'tags' '' 'Comma-separated list of Ansible tags to run' 't'
+DEFINE_string 'limit' '' 'Ansible limit pattern (default: HOSTNAME)' 'l'
+DEFINE_string 'playbook' 'site.yml' 'Ansible playbook to run'
+DEFINE_string 'inventory' 'inventory' 'Ansible inventory file to use'
+DEFINE_boolean 'verbose' false 'Enable verbose output, showing all command outputs'
+DEFINE_boolean 'dry_run' false 'Show all commands that would be run without executing them'
+DEFINE_boolean 'debug' false 'Enable detailed debug logging'
+
+# --- Script-specific Variables ---
 BUILD_NAME=""
 HOSTNAME=""
-POOL_NAME="${DEFAULT_POOL_NAME}"
 
 # --- Usage Information ---
 show_usage() {
@@ -53,16 +62,10 @@ PREREQUISITES:
   - Ansible must be installed in the container
   - Ansible configuration must be staged in /opt/ansible-config
 
-OPTIONS:
-  -p, --pool POOL         ZFS pool where the build dataset resides (default: ${DEFAULT_POOL_NAME}).
-  -t, --tags TAGS         Comma-separated list of Ansible tags to run.
-  -l, --limit PATTERN     Ansible limit pattern (default: HOSTNAME).
-      --playbook FILE     Ansible playbook to run (default: ${PLAYBOOK}).
-      --inventory FILE    Ansible inventory file to use (default: ${INVENTORY}).
-      --verbose           Enable verbose output.
-      --dry-run           Show commands without executing them.
-      --debug             Enable detailed debug logging.
-  -h, --help              Show this help message.
+EOF
+    echo "OPTIONS:"
+    flags_help
+    cat << EOF
 
 EXAMPLES:
   # Configure the 'ubuntu-noble' build for host 'blackbox'
@@ -71,40 +74,34 @@ EXAMPLES:
   # Configure with specific Ansible tags
   $0 --tags base,docker ubuntu-noble blackbox
 EOF
-    exit 0
 }
 
 # --- Argument Parsing ---
 parse_args() {
-    local remaining_args=()
+    # Parse flags and return non-flag arguments
+    FLAGS "$@" || exit 1
+    eval set -- "${FLAGS_ARGV}"
     
-    # First pass: handle common arguments
-    parse_common_args remaining_args "$@"
-    
-    # Second pass: handle script-specific arguments
-    local positional_args=()
-    local args=("${remaining_args[@]}")
-
-    while [[ ${#args[@]} -gt 0 ]]; do
-        case "${args[0]}" in
-            -p|--pool) POOL_NAME="${args[1]}"; args=("${args[@]:2}") ;;
-            -t|--tags) ANSIBLE_TAGS="${args[1]}"; args=("${args[@]:2}") ;;
-            -l|--limit) ANSIBLE_LIMIT="${args[1]}"; args=("${args[@]:2}") ;;
-            --playbook) PLAYBOOK="${args[1]}"; args=("${args[@]:2}") ;;
-            --inventory) INVENTORY="${args[1]}"; args=("${args[@]:2}") ;;
-            -h|--help) show_usage ;;
-            -*) die "Unknown option: ${args[0]}" ;;
-            *) positional_args+=("${args[0]}"); args=("${args[@]:1}") ;;
-        esac
-    done
-
-    if [[ ${#positional_args[@]} -ne 2 ]]; then
+    # Process positional arguments
+    if [[ $# -ne 2 ]]; then
+        echo "Error: Expected exactly BUILD_NAME and HOSTNAME arguments" >&2
+        echo ""
         show_usage
-        die "Invalid number of arguments. Expected BUILD_NAME and HOSTNAME."
+        exit 1
     fi
-
-    BUILD_NAME="${positional_args[0]}"
-    HOSTNAME="${positional_args[1]}"
+    
+    BUILD_NAME="$1"
+    HOSTNAME="$2"
+    
+    # Set global variables from flags for compatibility with existing code
+    POOL_NAME="${FLAGS_pool}"
+    ANSIBLE_TAGS="${FLAGS_tags}"
+    ANSIBLE_LIMIT="${FLAGS_limit}"
+    PLAYBOOK="${FLAGS_playbook}"
+    INVENTORY="${FLAGS_inventory}"
+    VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
+    DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
+    DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
 }
 
 # --- Prerequisite Checks ---

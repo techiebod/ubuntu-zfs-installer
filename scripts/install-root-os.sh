@@ -25,17 +25,25 @@ source "$lib_dir/ubuntu-api.sh"      # For version resolution
 source "$lib_dir/zfs.sh"             # For ZFS dataset paths
 source "$lib_dir/build-status.sh"    # For build status integration
 
-# --- Script-specific Default values ---
-POOL_NAME="${DEFAULT_POOL_NAME}"
-MOUNT_BASE="${DEFAULT_MOUNT_BASE}"
+# Load shflags library for standardized argument parsing
+source "$lib_dir/vendor/shflags"
+
+# --- Flag Definitions ---
+# Define all command-line flags with defaults and descriptions
+DEFINE_string 'pool' "${DEFAULT_POOL_NAME}" 'The ZFS pool where the root dataset exists' 'p'
+DEFINE_string 'distribution' '' 'Distribution to install (e.g., ubuntu, debian)' 'd'
+DEFINE_string 'version' '' 'Distribution version (e.g., 25.04, 12)' 'v'
+DEFINE_string 'codename' '' 'Distribution codename (e.g., noble, bookworm)' 'c'
+DEFINE_string 'arch' "${DEFAULT_ARCH}" 'Target architecture' 'a'
+DEFINE_string 'profile' "${DEFAULT_INSTALL_PROFILE:-minimal}" 'Installation profile: minimal, standard, full'
+DEFINE_string 'variant' "${DEFAULT_VARIANT}" 'Debootstrap variant'
+DEFINE_string 'docker_image' "${DEFAULT_DOCKER_IMAGE}" 'Docker image to use for the build'
+DEFINE_boolean 'verbose' false 'Enable verbose output, showing all command outputs'
+DEFINE_boolean 'dry_run' false 'Show all commands that would be run without executing them'
+DEFINE_boolean 'debug' false 'Enable detailed debug logging'
+
+# --- Script-specific Variables ---
 BUILD_NAME=""
-DISTRIBUTION="" # Now required
-VERSION=""      # Now required
-CODENAME=""     # Now required
-ARCH="${DEFAULT_ARCH}"
-PROFILE="${DEFAULT_INSTALL_PROFILE:-minimal}"  # Installation profile with fallback
-VARIANT="${DEFAULT_VARIANT}"
-DOCKER_IMAGE="${DEFAULT_DOCKER_IMAGE}"
 
 # --- Usage Information ---
 show_usage() {
@@ -48,57 +56,46 @@ This script is typically called by the main 'build-new-root.sh' orchestrator.
 ARGUMENTS:
   BUILD_NAME              The name of the target root dataset (e.g., 'ubuntu-noble').
 
-OPTIONS:
-  -p, --pool POOL         The ZFS pool where the root dataset exists (default: ${DEFAULT_POOL_NAME}).
-  -d, --distribution DIST Distribution to install (e.g., 'ubuntu', 'debian').
-  -v, --version VERSION   Distribution version (e.g., '25.04', '12').
-  -c, --codename CODENAME Distribution codename (e.g., 'noble', 'bookworm').
-  -a, --arch ARCH         Target architecture (default: ${DEFAULT_ARCH}).
-      --profile PROFILE   Installation profile: minimal, standard, full (default: ${DEFAULT_INSTALL_PROFILE:-minimal}).
-      --variant VARIANT   Debootstrap variant (default: ${DEFAULT_VARIANT}).
-      --docker-image IMG  Docker image to use for the build (default: ${DEFAULT_DOCKER_IMAGE}).
-
-$(show_common_options_help)
+EOF
+    echo "OPTIONS:"
+    flags_help
+    cat << EOF
 
 REQUIREMENTS:
   - Docker must be installed and running.
   - The target root dataset must already exist and be mounted.
 EOF
-    exit 0
 }
 
 # --- Argument Parsing ---
 parse_args() {
-    local remaining_args=()
+    # Parse flags and return non-flag arguments
+    FLAGS "$@" || exit 1
+    eval set -- "${FLAGS_ARGV}"
     
-    # First pass: handle common arguments
-    parse_common_args remaining_args "$@"
+    # Process positional arguments
+    if [[ $# -ne 1 ]]; then
+        echo "Error: Expected exactly one BUILD_NAME argument" >&2
+        echo ""
+        show_usage
+        exit 1
+    fi
     
-    # Second pass: handle script-specific arguments
-    local args=("${remaining_args[@]}")
+    BUILD_NAME="$1"
     
-    while [[ ${#args[@]} -gt 0 ]]; do
-        case "${args[0]}" in
-            -p|--pool) POOL_NAME="${args[1]}"; args=("${args[@]:2}") ;;
-            -d|--distribution) DISTRIBUTION="${args[1]}"; args=("${args[@]:2}") ;;
-            -v|--version) VERSION="${args[1]}"; args=("${args[@]:2}") ;;
-            -c|--codename) CODENAME="${args[1]}"; args=("${args[@]:2}") ;;
-            -a|--arch) ARCH="${args[1]}"; args=("${args[@]:2}") ;;
-            --profile) PROFILE="${args[1]}"; args=("${args[@]:2}") ;;
-            --variant) VARIANT="${args[1]}"; args=("${args[@]:2}") ;;
-            --docker-image) DOCKER_IMAGE="${args[1]}"; args=("${args[@]:2}") ;;
-            -h|--help) show_usage ;;
-            -*) die "Unknown option: ${args[0]}" ;;
-            *)
-                if [[ -z "$BUILD_NAME" ]]; then
-                    BUILD_NAME="${args[0]}"
-                else
-                    die "Too many arguments. Expected a single BUILD_NAME."
-                fi
-                args=("${args[@]:1}")
-                ;;
-        esac
-    done
+    # Set global variables from flags for compatibility with existing code
+    POOL_NAME="${FLAGS_pool}"
+    MOUNT_BASE="${DEFAULT_MOUNT_BASE}"  # Not configurable in this script
+    DISTRIBUTION="${FLAGS_distribution}"
+    VERSION="${FLAGS_version}"
+    CODENAME="${FLAGS_codename}"
+    ARCH="${FLAGS_arch}"
+    PROFILE="${FLAGS_profile}"
+    VARIANT="${FLAGS_variant}"
+    DOCKER_IMAGE="${FLAGS_docker_image}"
+    VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
+    DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
+    DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
 }
 
 # --- Package Configuration Loading ---
@@ -138,7 +135,7 @@ load_package_config() {
     # Get base packages from Ubuntu seeds
     local base_packages
     local verbose_flag=""
-    [[ "$VERBOSE" == "true" ]] && verbose_flag="--verbose"
+    [[ "$VERBOSE" -eq 0 ]] && verbose_flag="--verbose"
     if ! base_packages=$("$package_script" --codename "$CODENAME" --arch "$ARCH" $verbose_flag $seeds); then
         die "Failed to get package list for $distribution $CODENAME"
     fi
