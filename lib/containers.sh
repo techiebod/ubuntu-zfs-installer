@@ -458,7 +458,15 @@ container_shell() {
         die "Container '$container_name' is not running"
     fi
     
-    run_cmd machinectl shell "$container_name" "$shell"
+    log_build_debug "Executing: machinectl shell $container_name $shell"
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "[DRY RUN] Would open shell: machinectl shell $container_name $shell"
+        return 0
+    fi
+    
+    # Execute directly without run_cmd to preserve terminal interaction
+    exec machinectl shell "$container_name" "$shell"
 }
 
 # ==============================================================================
