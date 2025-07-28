@@ -33,17 +33,17 @@ _run_cmd_internal() {
     
     # Handle dry-run mode
     if [[ "$respect_dry_run" == "true" && "${DRY_RUN:-false}" == "true" ]]; then
-        echo "[DRY RUN] Would execute: $cmd_str"
+        log_info "[DRY RUN] Would execute: $cmd_str"
         return 0
     elif [[ "$respect_dry_run" == "false" && "${DRY_RUN:-false}" == "true" ]]; then
         if [[ "${DEBUG:-false}" == "true" ]]; then
-            echo "[DRY RUN] Read operation (executing): $cmd_str"
+            log_debug "[DRY RUN] Read operation (executing): $cmd_str"
         fi
     fi
 
     # Show verbose information about command execution
     if [[ "${VERBOSE:-false}" == "true" ]]; then
-        echo "[VERBOSE] Executing: $cmd_str"
+        log_info "[VERBOSE] Executing: $cmd_str"
     fi
 
     # Prepare for execution
@@ -56,21 +56,25 @@ _run_cmd_internal() {
 
     # Show debug information (return status and raw output)
     if [[ "${DEBUG:-false}" == "true" ]]; then
-        echo "[DEBUG] Command: $cmd_str"
-        echo "[DEBUG] Return status: $status"
+        log_debug "Command: $cmd_str"
+        log_debug "Return status: $status"
         if [[ -s "$output_file" ]]; then
-            echo "[DEBUG] Raw output:"
-            sed 's/^/[DEBUG]   /' "$output_file"
+            log_debug "Raw output:"
+            while IFS= read -r line; do
+                log_debug "  $line"
+            done < "$output_file"
         else
-            echo "[DEBUG] No output"
+            log_debug "No output"
         fi
     fi
 
     # In verbose mode, show output if we're not in debug mode (to avoid duplication)
     if [[ "${VERBOSE:-false}" == "true" && "${DEBUG:-false}" != "true" ]]; then
         if [[ -s "$output_file" ]]; then
-            echo "[VERBOSE] Output:"
-            sed 's/^/[VERBOSE]   /' "$output_file"
+            log_info "[VERBOSE] Output:"
+            while IFS= read -r line; do
+                log_info "[VERBOSE]   $line"
+            done < "$output_file"
         fi
     fi
 
@@ -144,7 +148,7 @@ run_capture() {
     log_debug "Capturing output from: $cmd_str"
     
     if [[ "${DRY_RUN:-false}" == true ]]; then
-        echo "[DRY RUN] Would execute: $cmd_str"
+        log_info "[DRY RUN] Would execute: $cmd_str"
         echo "[dry-run-output]"
         return 0
     fi
@@ -276,7 +280,7 @@ execute_with_timeout() {
     log_debug "Executing with ${timeout_seconds}s timeout: $*"
     
     if [[ "${DRY_RUN:-false}" == true ]]; then
-        log_info "[DRY-RUN] timeout ${timeout_seconds}s $*"
+        log_info "[DRY RUN] timeout ${timeout_seconds}s $*"
         return 0
     fi
     
@@ -332,7 +336,7 @@ execute_background() {
     log_debug "Starting background process: $*"
     
     if [[ "${DRY_RUN:-false}" == true ]]; then
-        log_info "[DRY-RUN] background: $*"
+        log_info "[DRY RUN] background: $*"
         return 0
     fi
     

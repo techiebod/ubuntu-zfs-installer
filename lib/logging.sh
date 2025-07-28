@@ -121,8 +121,8 @@ _log_to() {
             fi
         fi
         
-        # Log to file if requested and build context is set
-        if [[ $((destination & LOG_DEST_FILE)) -ne 0 && -n "$BUILD_LOG_CONTEXT" ]]; then
+        # Log to file if requested and build context is set (but not in dry-run mode)
+        if [[ $((destination & LOG_DEST_FILE)) -ne 0 && -n "$BUILD_LOG_CONTEXT" && "${DRY_RUN:-false}" != "true" ]]; then
             local log_file
             log_file=$(get_build_log_file)
             if [[ -n "$log_file" ]]; then
@@ -131,6 +131,9 @@ _log_to() {
                 # Use ISO format timestamp for file logs
                 echo "$(date -Iseconds) [$level] $message" >> "$log_file"
             fi
+        elif [[ "${DRY_RUN:-false}" == "true" && $((destination & LOG_DEST_FILE)) -ne 0 && -n "$BUILD_LOG_CONTEXT" ]]; then
+            # In dry-run mode, show what would be logged to file
+            log_debug "[DRY RUN] Would log to file: $message"
         fi
     fi
 }

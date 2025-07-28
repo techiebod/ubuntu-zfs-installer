@@ -236,15 +236,12 @@ build_should_run_stage() {
         [[ "${VALID_STATUSES[$i]}" == "$stage" ]] && stage_index=$i
     done
     
-    # Stage should run only if it's the immediate next stage in the sequence
-    if [[ $stage_index -eq $((current_index + 1)) ]]; then
-        log_debug "Stage $stage should run (current: $current_status)"
+    # Stage should run if it comes at or after the current completion point
+    if [[ $stage_index -gt $current_index ]]; then
+        log_debug "Stage $stage should run (comes after current: $current_status)"
         return 0
     elif [[ $stage_index -eq $current_index ]]; then
         log_debug "Stage $stage already completed"
-        return 1
-    elif [[ $stage_index -gt $current_index ]]; then
-        log_debug "Cannot run stage $stage - would skip stages (current: $current_status)"
         return 1
     else
         log_debug "Cannot run stage $stage - stage is before current status (current: $current_status)"

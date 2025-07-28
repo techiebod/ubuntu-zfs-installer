@@ -134,7 +134,7 @@ load_package_config() {
     # Get base packages from Ubuntu seeds
     local base_packages
     local verbose_flag=""
-    [[ "$VERBOSE" -eq 0 ]] && verbose_flag="--verbose"
+    [[ "$VERBOSE" == "true" ]] && verbose_flag="--verbose"
     if ! base_packages=$("$package_script" --codename "$CODENAME" --arch "$ARCH" $verbose_flag $seeds); then
         die "Failed to get package list for $distribution $CODENAME"
     fi
@@ -169,8 +169,12 @@ check_prerequisites() {
     check_zfs_pool "$POOL_NAME"
 
     local mount_point="${MOUNT_BASE}/${BUILD_NAME}"
-    if ! mountpoint -q "$mount_point"; then
-        die "Target mount point '$mount_point' is not a mountpoint. The dataset must be mounted first."
+    if [[ "$DRY_RUN" != "true" ]]; then
+        if ! mountpoint -q "$mount_point"; then
+            die "Target mount point '$mount_point' is not a mountpoint. The dataset must be mounted first."
+        fi
+    else
+        log_debug "Skipping mountpoint check in dry-run mode for: $mount_point"
     fi
 }
 
