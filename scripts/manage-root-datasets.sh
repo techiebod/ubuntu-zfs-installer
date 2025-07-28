@@ -271,7 +271,7 @@ list_root_datasets() {
         printf("size: %.2fG | allocated: %.2fG (%.0f%%) | free: %.2fG",
                size_h, alloc_h, (alloc_h/size_h)*100, free_h)
     }')
-    echo "pool status ($POOL_NAME): $pool_info"
+    log_info "pool status ($POOL_NAME): $pool_info"
     echo
 
     # Get direct children of the ROOT dataset using centralized function
@@ -279,7 +279,7 @@ list_root_datasets() {
     datasets=$(zfs_list_root_datasets "$POOL_NAME")
     
     if [[ -z "$datasets" ]]; then
-        echo "no root datasets found under '${POOL_NAME}/${DEFAULT_ROOT_DATASET}'."
+        log_info "no root datasets found under '${POOL_NAME}/${DEFAULT_ROOT_DATASET}'."
         return 0
     fi
 

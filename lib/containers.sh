@@ -492,19 +492,19 @@ container_show_info() {
     log_info "Container information for: $container_name"
     
     if container_is_running "$container_name"; then
-        echo "Status: Running"
+        log_info "Status: Running"
         
         if command -v machinectl &>/dev/null; then
             echo
-            echo "Container Details:"
-            run_cmd_read machinectl show "$container_name" 2>/dev/null || echo "  Details not available"
+            log_info "Container Details:"
+            run_cmd_read machinectl show "$container_name" 2>/dev/null || log_info "  Details not available"
             
             echo
-            echo "Container Status:"
-            run_cmd_read machinectl status "$container_name" 2>/dev/null || echo "  Status not available"
+            log_info "Container Status:"
+            run_cmd_read machinectl status "$container_name" 2>/dev/null || log_info "  Status not available"
         fi
     else
-        echo "Status: Stopped"
+        log_info "Status: Stopped"
     fi
 }
 

@@ -53,7 +53,7 @@ list_snapshots() {
     snapshots=$(zfs_list_snapshots "$dataset" "$filter_pattern")
 
     if [[ -z "$snapshots" ]]; then
-        echo "no snapshots found matching pattern: $filter_pattern"
+        log_info "no snapshots found matching pattern: $filter_pattern"
         return 0
     fi
 
@@ -62,7 +62,7 @@ list_snapshots() {
     snapshot_details=$(zfs list -t snapshot -o name,creation,used -S creation -H "$dataset" 2>/dev/null | grep "@${filter_pattern}")
     
     if [[ -z "$snapshot_details" ]]; then
-        echo "no snapshots found matching pattern: $filter_pattern"
+        log_info "no snapshots found matching pattern: $filter_pattern"
         return 0
     fi
 
