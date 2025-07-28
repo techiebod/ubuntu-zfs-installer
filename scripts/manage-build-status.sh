@@ -191,8 +191,9 @@ parse_arguments() {
     
     # Set global variables from flags with proper boolean conversion
     POOL_NAME="${FLAGS_pool}"
-    # shellcheck disable=SC2154  # FLAGS_dry_run is set by shflags
+    # shellcheck disable=SC2154,SC2034  # FLAGS_dry_run is set by shflags
     DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
+    # shellcheck disable=SC2034 # DEBUG is exported by core.sh
     DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
 }
 

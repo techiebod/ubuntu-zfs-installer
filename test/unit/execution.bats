@@ -87,18 +87,18 @@ setup() {
 # ARGUMENT PARSING TESTS
 # ==============================================================================
 
-@test "parse_common_args handles verbose flag" {
-    # Test verbose short form
-    export VERBOSE=false
+@test "parse_common_args handles debug flag" {
+    # Test debug short form
+    export DEBUG=false
     local remaining_args=()
-    parse_common_args remaining_args "-v"
-    [[ "$VERBOSE" == "true" ]]
+    parse_common_args remaining_args "-d"
+    [[ "$DEBUG" == "true" ]]
     
-    # Reset and test verbose long form
-    export VERBOSE=false
+    # Reset and test debug long form
+    export DEBUG=false
     remaining_args=()
-    parse_common_args remaining_args "--verbose"
-    [[ "$VERBOSE" == "true" ]]
+    parse_common_args remaining_args "--debug"
+    [[ "$DEBUG" == "true" ]]
 }
 
 @test "parse_common_args handles dry-run flag" {
@@ -115,29 +115,13 @@ setup() {
     [[ "$DRY_RUN" == "true" ]]
 }
 
-@test "parse_common_args handles debug flag" {
-    # Test debug short form
-    export DEBUG=false
-    local remaining_args=()
-    parse_common_args remaining_args "-d"
-    [[ "$DEBUG" == "true" ]]
-    
-    # Reset and test debug long form
-    export DEBUG=false
-    remaining_args=()
-    parse_common_args remaining_args "--debug"
-    [[ "$DEBUG" == "true" ]]
-}
-
 @test "parse_common_args handles multiple flags" {
-    export VERBOSE=false
     export DRY_RUN=false
     export DEBUG=false
     
     local remaining_args=()
-    parse_common_args remaining_args "-v" "-n" "-d"
+    parse_common_args remaining_args "-n" "-d"
     
-    [[ "$VERBOSE" == "true" ]]
     [[ "$DRY_RUN" == "true" ]]
     [[ "$DEBUG" == "true" ]]
 }
@@ -160,7 +144,6 @@ setup() {
     run show_common_options_help
     [[ $status -eq 0 ]]
     [[ -n "$output" ]]
-    [[ "$output" =~ "verbose" ]]
     [[ "$output" =~ "dry-run" ]]
     [[ "$output" =~ "debug" ]]
 }

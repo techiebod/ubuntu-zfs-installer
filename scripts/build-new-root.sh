@@ -133,6 +133,7 @@ parse_args() {
     # Update global environment variables (exported by lib/core.sh)
     # shellcheck disable=SC2154  # FLAGS_dry_run is set by shflags
     DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
+    # shellcheck disable=SC2034
     DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
 }
 
