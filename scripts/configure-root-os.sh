@@ -223,12 +223,12 @@ cd /opt/ansible-config
 
 # Ansible should already be installed, just install role/collection dependencies
 if [[ -f 'requirements.yml' ]]; then
-    log_info 'Installing Ansible role dependencies...'
+    echo 'Installing Ansible role dependencies...'
     ansible-galaxy install -r requirements.yml -p ./roles
-    log_info 'Installing Ansible collection dependencies...'
+    echo 'Installing Ansible collection dependencies...'
     ansible-galaxy collection install -r requirements.yml -p ./collections
 else
-    log_info 'No requirements.yml found, skipping role installation.'
+    echo 'No requirements.yml found, skipping role installation.'
 fi
 SCRIPT_EOF
         chmod +x "$setup_script"
@@ -254,7 +254,7 @@ SCRIPT_EOF
 #!/bin/bash
 set -euo pipefail
 cd /opt/ansible-config
-log_info 'Executing Ansible playbook...'
+echo 'Executing Ansible playbook...'
 ${ansible_playbook_cmd[*]}
 SCRIPT_EOF
         chmod +x "$run_script"

@@ -172,21 +172,21 @@ container_create() {
         if [[ "${DRY_RUN:-false}" == "true" ]]; then
             log_warn "Container '$container_name' is already running, but continuing with dry-run simulation"
         else
-            log_info "Container '$container_name' is already running - skipping creation"
-            return 0
+            log_info "Container '$container_name' is already running - skipping container creation/start"
+            # Don't return here! We still need to install packages and configure services
         fi
-    fi
-    
-    # Copy hostid for ZFS compatibility
-    log_debug "Copying hostid '$(hostid)' to container for ZFS compatibility..."
-    run_cmd cp /etc/hostid "$mount_point/etc/hostid"
-    
-    log_info "Container '$container_name' created and prepared"
-    
-    # Start the container to enable package installation and service configuration
-    log_info "Starting container '$container_name' for package installation..."
-    if ! container_start "$pool_name" "$build_name" "$container_name" --hostname "$hostname"; then
-        die "Failed to start container '$container_name'"
+    else
+        # Copy hostid for ZFS compatibility
+        log_debug "Copying hostid '$(hostid)' to container for ZFS compatibility..."
+        run_cmd cp /etc/hostid "$mount_point/etc/hostid"
+        
+        log_info "Container '$container_name' created and prepared"
+        
+        # Start the container to enable package installation and service configuration
+        log_info "Starting container '$container_name' for package installation..."
+        if ! container_start "$pool_name" "$build_name" "$container_name" --hostname "$hostname"; then
+            die "Failed to start container '$container_name'"
+        fi
     fi
     
     # Enable networking services using container-based execution (not chroot)
@@ -480,7 +480,7 @@ container_run_command() {
         die "Container '$container_name' is not running"
     fi
     
-    run_cmd systemd-run --machine="$container_name" --wait bash -c "$command"
+    run_cmd systemd-run --machine="$container_name" --wait --pipe -q -- bash -c "$command"
 }
 
 # Execute a command in a running container (legacy interface for compatibility)
@@ -496,7 +496,7 @@ container_exec() {
         die "Container '$container_name' is not running"
     fi
     
-    run_cmd systemd-run --machine="$container_name" --wait "${command[@]}"
+    run_cmd systemd-run --machine="$container_name" --wait --pipe -q -- "${command[@]}"
 }
 
 # Open an interactive shell in a running container
