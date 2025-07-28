@@ -18,6 +18,7 @@ source "$lib_dir/dependencies.sh"    # For require_command (systemd-nspawn)
 source "$lib_dir/zfs.sh"             # For ZFS operations (mount paths)
 source "$lib_dir/containers.sh"      # For container operations (primary functionality)
 source "$lib_dir/build-status.sh"    # For build status integration
+source "$lib_dir/flag-helpers.sh"    # For common flag definitions
 
 # Load shflags library for standardized argument parsing
 source "$lib_dir/vendor/shflags"
@@ -28,8 +29,7 @@ DEFINE_string 'pool' "${DEFAULT_POOL_NAME}" 'ZFS pool where the build dataset re
 DEFINE_string 'name' '' 'Container name (default: BUILD_NAME)' 'n'
 DEFINE_string 'hostname' '' 'Hostname to set in container (default: BUILD_NAME)'
 DEFINE_string 'install_packages' '' 'Comma-separated list of packages to install during create'
-DEFINE_boolean 'dry-run' false 'Show all commands that would be run without executing them'
-DEFINE_boolean 'debug' false 'Enable detailed debug logging'
+define_common_flags  # Add standard dry-run and debug flags
 
 # --- Script-specific Variables ---
 ACTION=""
@@ -139,11 +139,8 @@ parse_args() {
     CONTAINER_NAME="${FLAGS_name}"
     HOSTNAME="${FLAGS_hostname}"
     INSTALL_PACKAGES="${FLAGS_install_packages}"
-    # Convert shflags boolean values (0=true, 1=false) to traditional bash boolean
-    # shellcheck disable=SC2034,SC2154  # FLAGS_dry_run is set by shflags
-    DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
-    # shellcheck disable=SC2034
-    DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
+    # Process common flags (dry-run and debug)
+    process_common_flags
     
     # Set defaults
     if [[ -z "$CONTAINER_NAME" ]]; then

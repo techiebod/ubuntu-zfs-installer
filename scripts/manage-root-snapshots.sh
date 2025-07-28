@@ -18,14 +18,14 @@ source "$lib_dir/execution.sh"       # For argument parsing and run_cmd
 source "$lib_dir/validation.sh"      # For build name validation
 source "$lib_dir/dependencies.sh"    # For require_command (zfs)
 source "$lib_dir/zfs.sh"             # For ZFS operations (primary functionality)
+source "$lib_dir/flag-helpers.sh"    # For common flag definitions
 
 # Load shflags library
 source "$lib_dir/vendor/shflags"
 
 # --- Flag definitions ---
 DEFINE_string 'pool' "${DEFAULT_POOL_NAME}" 'The ZFS pool to operate on' 'p'
-DEFINE_boolean 'dry-run' false 'Show all commands that would be run without executing them'
-DEFINE_boolean 'debug' false 'Enable detailed debug logging'
+define_common_flags  # Add standard dry-run and debug flags
 
 # --- Function to create a snapshot without timestamp ---
 create_snapshot() {
@@ -177,10 +177,8 @@ parse_arguments() {
     
     # Set global variables from flags with proper boolean conversion
     POOL_NAME="${FLAGS_pool}"
-    # shellcheck disable=SC2034,SC2154  # FLAGS_dry_run is set by shflags
-    DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
-    # shellcheck disable=SC2034
-    DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
+    # Process common flags (dry-run and debug)
+    process_common_flags
 }
 
 # --- Main function ---

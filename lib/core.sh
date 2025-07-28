@@ -5,6 +5,9 @@
 # This is the minimal core initialization library that provides essential
 # project structure, configuration, and global variables needed by all scripts.
 # Individual scripts should load specific libraries they need after sourcing core.sh.
+# This file is sourced by other scripts, so all variables are
+# unused according to shellcheck, so help it chill out
+# shellcheck disable=SC2034
 
 # --- Prevent multiple sourcing ---
 if [[ "${__CORE_LIB_LOADED:-}" == "true" ]]; then
@@ -97,8 +100,3 @@ is_interactive_mode() {
 export PROJECT_ROOT
 export CORE_LIB_DIR
 export GLOBAL_CONFIG_FILE
-
-# Export configuration defaults for shellcheck compatibility
-export DEFAULT_DISTRIBUTION DEFAULT_POOL_NAME DEFAULT_ROOT_DATASET
-export DEFAULT_MOUNT_BASE DEFAULT_ARCH DEFAULT_VARIANT DEFAULT_DOCKER_IMAGE
-export STATUS_DIR LOG_LEVEL

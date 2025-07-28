@@ -14,10 +14,12 @@ lib_dir="$script_dir/../lib"
 source "$lib_dir/core.sh"
 
 # Load libraries we need
-source "$lib_dir/logging.sh"         # For logging functions
-source "$lib_dir/execution.sh"       # For argument parsing and run_cmd
-source "$lib_dir/validation.sh"      # For hostname validation
-source "$lib_dir/dependencies.sh"    # For require_command (ansible)
+source "$lib_dir/core.sh"
+source "$lib_dir/logging.sh"
+source "$lib_dir/execution.sh"
+source "$lib_dir/validation.sh" 
+source "$lib_dir/dependencies.sh"
+source "$lib_dir/flag-helpers.sh"
 source "$lib_dir/zfs.sh"             # For ZFS dataset paths
 source "$lib_dir/containers.sh"      # For container operations
 source "$lib_dir/build-status.sh"    # For build status integration
@@ -32,8 +34,7 @@ DEFINE_string 'tags' '' 'Comma-separated list of Ansible tags to run' 't'
 DEFINE_string 'limit' '' 'Ansible limit pattern (default: HOSTNAME)' 'l'
 DEFINE_string 'playbook' 'site.yml' 'Ansible playbook to run'
 DEFINE_string 'inventory' 'inventory' 'Ansible inventory file to use'
-DEFINE_boolean 'dry-run' false 'Show all commands that would be run without executing them'
-DEFINE_boolean 'debug' false 'Enable detailed debug logging'
+define_common_flags  # Add standard dry-run and debug flags
 
 # --- Script-specific Variables ---
 BUILD_NAME=""
@@ -94,10 +95,8 @@ parse_args() {
     ANSIBLE_LIMIT="${FLAGS_limit}"
     PLAYBOOK="${FLAGS_playbook}"
     INVENTORY="${FLAGS_inventory}"
-    # shellcheck disable=SC2154  # FLAGS_dry_run is set by shflags
-    DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
-    # shellcheck disable=SC2154  # FLAGS_debug is set by shflags
-    DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
+    # Process common flags (dry-run and debug)
+    process_common_flags
 }
 
 # --- Prerequisite Checks ---

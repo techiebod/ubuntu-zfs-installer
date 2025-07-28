@@ -12,11 +12,14 @@ lib_dir="$script_dir/../lib"
 # Load the core library which sets up essential project structure and variables
 source "$lib_dir/core.sh"
 
-# Load only the libraries we need
-source "$lib_dir/logging.sh"         # For logging functions
-source "$lib_dir/execution.sh"       # For argument parsing and run_cmd
-source "$lib_dir/validation.sh"      # For build name validation
-source "$lib_dir/zfs.sh"             # For ZFS operations (primary functionality)
+# Load libraries
+source "$lib_dir/core.sh"
+source "$lib_dir/logging.sh"
+source "$lib_dir/execution.sh"
+source "$lib_dir/validation.sh"
+source "$lib_dir/dependencies.sh"
+source "$lib_dir/zfs.sh"
+source "$lib_dir/flag-helpers.sh"
 source "$lib_dir/build-status.sh"    # For build status integration
 
 # Load shflags library for standardized argument parsing
@@ -28,8 +31,7 @@ DEFINE_string 'pool' "${DEFAULT_POOL_NAME}" 'The ZFS pool to operate on' 'p'
 DEFINE_string 'mount_base' "${DEFAULT_MOUNT_BASE}" 'Base directory where datasets are mounted for building' 'm'
 DEFINE_boolean 'cleanup' false 'When creating, destroy any existing dataset with the same name first'
 DEFINE_boolean 'force' false 'For destroy, bypass the confirmation prompt'
-DEFINE_boolean 'dry-run' false 'Show all commands that would be run without executing them'
-DEFINE_boolean 'debug' false 'Enable detailed debug logging'
+define_common_flags  # Add standard dry-run and debug flags
 
 # --- Script-specific Variables ---
 ACTION=""
@@ -372,9 +374,8 @@ parse_args() {
     # Convert shflags boolean values (0=true, 1=false) to traditional bash boolean
     CLEANUP=$([ "${FLAGS_cleanup}" -eq 0 ] && echo "true" || echo "false")
     FORCE_DESTROY=$([ "${FLAGS_force}" -eq 0 ] && echo "true" || echo "false")
-    # shellcheck disable=SC2034,SC2154  # FLAGS_dry_run is set by shflags
-    DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
-    DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
+    # Process common flags (dry-run and debug)
+    process_common_flags
 }
 
 # --- Main Logic ---

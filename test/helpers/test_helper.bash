@@ -248,7 +248,6 @@ reset_mocks() {
 setup_test_env() {
     # Set safe defaults for testing
     export DRY_RUN=true
-    export VERBOSE=false
     export DEBUG=true  # Enable debug logging for better test visibility
     
     # Reset any existing state

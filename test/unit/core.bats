@@ -9,7 +9,6 @@ setup() {
     export PROJECT_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
     
     # Set up test environment variables
-    export VERBOSE=false
     export DRY_RUN=false
     export DEBUG=false
     export LOG_WITH_TIMESTAMPS=true
@@ -78,7 +77,6 @@ setup() {
     source "$PROJECT_ROOT/lib/core.sh"
     
     # Check that global state variables are properly initialized
-    [[ "$VERBOSE" == "false" ]]
     [[ "$DRY_RUN" == "false" ]]
     [[ "$DEBUG" == "false" ]]
     [[ "$LOG_WITH_TIMESTAMPS" == "true" ]]

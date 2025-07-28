@@ -9,7 +9,6 @@ setup() {
     source "$PROJECT_ROOT/lib/execution.sh"
     
     # Set up test environment
-    export VERBOSE=false
     export DRY_RUN=false
     export DEBUG=false
 }

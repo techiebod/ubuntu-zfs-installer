@@ -23,6 +23,7 @@ source "$lib_dir/ubuntu-api.sh"      # For version resolution
 source "$lib_dir/zfs.sh"             # For ZFS dataset paths
 source "$lib_dir/containers.sh"      # For container operations
 source "$lib_dir/build-status.sh"    # For build status management
+source "$lib_dir/flag-helpers.sh"    # For common flag definitions
 
 # Load shflags library for standardized argument parsing
 source "$lib_dir/vendor/shflags"
@@ -38,8 +39,7 @@ DEFINE_string 'profile' "${DEFAULT_INSTALL_PROFILE:-minimal}" 'Package installat
 DEFINE_string 'tags' '' 'Comma-separated list of Ansible tags to run' 't'
 DEFINE_string 'limit' '' 'Ansible limit pattern (default: HOSTNAME)' 'l'
 DEFINE_boolean 'snapshots' true 'Create ZFS snapshots after major build stages'
-DEFINE_boolean 'dry-run' false 'Show all commands that would be run without executing them'
-DEFINE_boolean 'debug' false 'Enable detailed debug logging'
+define_common_flags  # Add standard dry-run and debug flags
 
 # --- Script-specific Variables ---
 # These will be set based on positional arguments
@@ -130,11 +130,8 @@ parse_args() {
     ANSIBLE_LIMIT="${FLAGS_limit}"
     # Convert shflags boolean values (0=true, 1=false) to traditional bash boolean
     CREATE_SNAPSHOTS=$([ "${FLAGS_snapshots}" -eq 0 ] && echo "true" || echo "false")
-    # Update global environment variables (exported by lib/core.sh)
-    # shellcheck disable=SC2154  # FLAGS_dry_run is set by shflags
-    DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
-    # shellcheck disable=SC2034
-    DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
+    # Process common flags (dry-run and debug)
+    process_common_flags
 }
 
 # --- Prerequisite Checks ---

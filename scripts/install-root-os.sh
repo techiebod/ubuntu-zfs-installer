@@ -20,6 +20,7 @@ source "$lib_dir/dependencies.sh"    # For require_command (docker)
 source "$lib_dir/ubuntu-api.sh"      # For version resolution
 source "$lib_dir/zfs.sh"             # For ZFS dataset paths
 source "$lib_dir/build-status.sh"    # For build status integration
+source "$lib_dir/flag-helpers.sh"    # For common flag definitions
 
 # Load shflags library for standardized argument parsing
 source "$lib_dir/vendor/shflags"
@@ -34,8 +35,7 @@ DEFINE_string 'arch' "${DEFAULT_ARCH}" 'Target architecture' 'a'
 DEFINE_string 'profile' "${DEFAULT_INSTALL_PROFILE:-minimal}" 'Installation profile: minimal, standard, full'
 DEFINE_string 'variant' "${DEFAULT_VARIANT}" 'Debootstrap variant'
 DEFINE_string 'docker_image' "${DEFAULT_DOCKER_IMAGE}" 'Docker image to use for the build'
-DEFINE_boolean 'dry-run' false 'Show all commands that would be run without executing them'
-DEFINE_boolean 'debug' false 'Enable detailed debug logging'
+define_common_flags  # Add standard dry-run and debug flags
 
 # --- Script-specific Variables ---
 BUILD_NAME=""
@@ -88,9 +88,8 @@ parse_args() {
     PROFILE="${FLAGS_profile}"
     VARIANT="${FLAGS_variant}"
     DOCKER_IMAGE="${FLAGS_docker_image}"
-    # shellcheck disable=SC2034,SC2154  # FLAGS_dry_run is set by shflags
-    DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
-    DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
+    # Process common flags (dry-run and debug)
+    process_common_flags
 }
 
 # --- Package Configuration Loading ---

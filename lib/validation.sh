@@ -49,6 +49,27 @@ if [[ -z "${VALID_DISTRIBUTIONS:-}" ]]; then
 fi
 
 # ==============================================================================
+# VALIDATION HELPER FUNCTIONS
+# ==============================================================================
+
+# Generic function to validate a value against an array of valid options
+# Usage: validate_in_array "value" "context" "${VALID_ARRAY[@]}"
+validate_in_array() {
+    local value="$1"
+    local context="$2"
+    shift 2
+    local valid_options=("$@")
+    
+    for valid_option in "${valid_options[@]}"; do
+        if [[ "$value" == "$valid_option" ]]; then
+            return 0
+        fi
+    done
+    
+    die "Invalid $context: '$value'. Valid options are: ${valid_options[*]}"
+}
+
+# ==============================================================================
 # INPUT VALIDATION FUNCTIONS
 # ==============================================================================
 
@@ -82,42 +103,21 @@ validate_hostname() {
 # Validate install profile
 validate_install_profile() {
     local profile="$1"
-    
-    for valid_profile in "${VALID_INSTALL_PROFILES[@]}"; do
-        if [[ "$profile" == "$valid_profile" ]]; then
-            return 0
-        fi
-    done
-    
-    die "Invalid install profile: '$profile'. Valid profiles are: ${VALID_INSTALL_PROFILES[*]}"
+    validate_in_array "$profile" "install profile" "${VALID_INSTALL_PROFILES[@]}"
 }
 
 # Validate architecture
 validate_architecture() {
     local arch="$1"
     local context="${2:-architecture}"
-    
-    for valid_arch in "${VALID_ARCHITECTURES[@]}"; do
-        if [[ "$arch" == "$valid_arch" ]]; then
-            return 0
-        fi
-    done
-    
-    die "Invalid $context: '$arch'. Valid architectures are: ${VALID_ARCHITECTURES[*]}"
+    validate_in_array "$arch" "$context" "${VALID_ARCHITECTURES[@]}"
 }
 
 # Validate distribution
 validate_distribution() {
     local distro="$1"
     local context="${2:-distribution}"
-    
-    for valid_distro in "${VALID_DISTRIBUTIONS[@]}"; do
-        if [[ "$distro" == "$valid_distro" ]]; then
-            return 0
-        fi
-    done
-    
-    die "Invalid $context: '$distro'. Valid distributions are: ${VALID_DISTRIBUTIONS[*]}"
+    validate_in_array "$distro" "$context" "${VALID_DISTRIBUTIONS[@]}"
 }
 
 # ==============================================================================
