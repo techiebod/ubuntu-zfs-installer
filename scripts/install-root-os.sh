@@ -2,7 +2,7 @@
 #
 # Install Base OS using mmdebstrap
 #
-# This script creates a minimal, ZFS-ready base OS inside a target root dataset.
+# This script creates a minimal, ZFS-ready OS inside a target root dataset.
 # It uses mmdebstrap running inside a Docker container for maximum compatibility.
 
 # --- Script Setup ---
@@ -34,7 +34,6 @@ DEFINE_string 'arch' "${DEFAULT_ARCH}" 'Target architecture' 'a'
 DEFINE_string 'profile' "${DEFAULT_INSTALL_PROFILE:-minimal}" 'Installation profile: minimal, standard, full'
 DEFINE_string 'variant' "${DEFAULT_VARIANT}" 'Debootstrap variant'
 DEFINE_string 'docker_image' "${DEFAULT_DOCKER_IMAGE}" 'Docker image to use for the build'
-DEFINE_boolean 'verbose' false 'Enable verbose output, showing all command outputs'
 DEFINE_boolean 'dry-run' false 'Show all commands that would be run without executing them'
 DEFINE_boolean 'debug' false 'Enable detailed debug logging'
 
@@ -89,11 +88,8 @@ parse_args() {
     PROFILE="${FLAGS_profile}"
     VARIANT="${FLAGS_variant}"
     DOCKER_IMAGE="${FLAGS_docker_image}"
-    # shellcheck disable=SC2034
-    VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
     # shellcheck disable=SC2034,SC2154  # FLAGS_dry_run is set by shflags
     DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
-    # shellcheck disable=SC2034
     DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
 }
 
@@ -133,9 +129,10 @@ load_package_config() {
     
     # Get base packages from Ubuntu seeds
     local base_packages
-    local verbose_flag=""
-    [[ "$VERBOSE" == "true" ]] && verbose_flag="--verbose"
-    if ! base_packages=$("$package_script" --codename "$CODENAME" --arch "$ARCH" $verbose_flag $seeds); then
+    local package_verbose_flag=""
+    # When debug is enabled, pass --verbose to the package utility for detailed output
+    [[ "$DEBUG" == "true" ]] && package_verbose_flag="--verbose"
+    if ! base_packages=$("$package_script" --codename "$CODENAME" --arch "$ARCH" $package_verbose_flag $seeds); then
         die "Failed to get package list for $distribution $CODENAME"
     fi
     

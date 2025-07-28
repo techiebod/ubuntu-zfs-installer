@@ -3,7 +3,7 @@
 # Execution Library
 #
 # This library provides command execution, argument parsing, and script
-# invocation functionality. It handles verbose/dry-run modes, command
+# invocation functionality. It handles debug/dry-run modes, command
 # output management, and common argument processing.
 
 # --- Prevent multiple sourcing ---
@@ -36,15 +36,11 @@ _run_cmd_internal() {
         log_info "[DRY RUN] Would execute: $cmd_str"
         return 0
     elif [[ "$respect_dry_run" == "false" && "${DRY_RUN:-false}" == "true" ]]; then
-        if [[ "${DEBUG:-false}" == "true" ]]; then
-            log_debug "[DRY RUN] Read operation (executing): $cmd_str"
-        fi
+        log_build_debug "[DRY RUN] Read operation (executing): $cmd_str"
     fi
 
-    # Show verbose information about command execution
-    if [[ "${VERBOSE:-false}" == "true" ]]; then
-        log_info "[VERBOSE] Executing: $cmd_str"
-    fi
+    # Always log command execution to file, show on console if debug enabled
+    log_build_debug "Executing: $cmd_str"
 
     # Prepare for execution
     local output_file
@@ -54,31 +50,19 @@ _run_cmd_internal() {
     # Execute the command and capture output
     "$@" >"$output_file" 2>&1 || status=$?
 
-    # Show debug information (return status and raw output)
-    if [[ "${DEBUG:-false}" == "true" ]]; then
-        log_debug "Command: $cmd_str"
-        log_debug "Return status: $status"
-        if [[ -s "$output_file" ]]; then
-            log_debug "Raw output:"
-            while IFS= read -r line; do
-                log_debug "  $line"
-            done < "$output_file"
-        else
-            log_debug "No output"
-        fi
+    # Always log detailed execution info to file
+    log_build_debug "Command: $cmd_str"
+    log_build_debug "Return status: $status"
+    if [[ -s "$output_file" ]]; then
+        log_build_debug "Raw output:"
+        while IFS= read -r line; do
+            log_build_debug "  $line"
+        done < "$output_file"
+    else
+        log_build_debug "No output"
     fi
 
-    # In verbose mode, show output if we're not in debug mode (to avoid duplication)
-    if [[ "${VERBOSE:-false}" == "true" && "${DEBUG:-false}" != "true" ]]; then
-        if [[ -s "$output_file" ]]; then
-            log_info "[VERBOSE] Output:"
-            while IFS= read -r line; do
-                log_info "[VERBOSE]   $line"
-            done < "$output_file"
-        fi
-    fi
-
-    # For read operations, always show output (unless we're in debug mode)
+    # For read operations, always show output (unless we're in debug mode where it's already shown)
     if [[ "$respect_dry_run" == "false" && "${DEBUG:-false}" != "true" ]]; then
         cat "$output_file"
     fi
@@ -108,8 +92,8 @@ _run_cmd_internal() {
     return 0
 }
 
-# Run a command, respecting VERBOSE and DRY_RUN modes.
-# If VERBOSE is true, output is streamed. Otherwise, it's captured.
+# Run a command, respecting DEBUG and DRY_RUN modes.
+# If DEBUG is true, output is streamed. Otherwise, it's captured.
 # On failure, it logs the command, status code, and output before exiting.
 # Usage: run_cmd "ls" "-l" "/tmp"
 run_cmd() {
@@ -145,7 +129,7 @@ run_quiet() {
 # Usage: output=$(run_capture "command" "args")
 run_capture() {
     local cmd_str="$*"
-    log_debug "Capturing output from: $cmd_str"
+    log_build_debug "Capturing output from: $cmd_str"
     
     if [[ "${DRY_RUN:-false}" == true ]]; then
         log_info "[DRY RUN] Would execute: $cmd_str"
@@ -179,10 +163,6 @@ parse_common_args() {
     
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --verbose|-v)
-                VERBOSE=true
-                shift
-                ;;
             --dry-run|-n)
                 DRY_RUN=true
                 shift
@@ -209,7 +189,6 @@ parse_common_args() {
 add_common_flags() {
     local -n args_ref=$1
     
-    [[ "$VERBOSE" == true ]] && args_ref+=("--verbose")
     [[ "$DRY_RUN" == true ]] && args_ref+=("--dry-run")
     [[ "$DEBUG" == true ]] && args_ref+=("--debug")
 }
@@ -230,7 +209,6 @@ invoke_script() {
 show_common_options_help() {
     cat << EOF
 COMMON OPTIONS:
-      --verbose           Enable verbose output.
       --dry-run           Show commands without executing them.
       --debug             Enable detailed debug logging.
   -h, --help              Show this help message.
@@ -267,7 +245,7 @@ execute_script() {
         die "Script not executable: $script_path"
     fi
     
-    log_debug "Executing script: $script_path $*"
+    log_build_debug "Executing script: $script_path $*"
     run_cmd "$script_path" "$@"
 }
 
@@ -277,7 +255,7 @@ execute_with_timeout() {
     local timeout_seconds="$1"
     shift
     
-    log_debug "Executing with ${timeout_seconds}s timeout: $*"
+    log_build_debug "Executing with ${timeout_seconds}s timeout: $*"
     
     if [[ "${DRY_RUN:-false}" == true ]]; then
         log_info "[DRY RUN] timeout ${timeout_seconds}s $*"

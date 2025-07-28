@@ -32,7 +32,6 @@ DEFINE_string 'tags' '' 'Comma-separated list of Ansible tags to run' 't'
 DEFINE_string 'limit' '' 'Ansible limit pattern (default: HOSTNAME)' 'l'
 DEFINE_string 'playbook' 'site.yml' 'Ansible playbook to run'
 DEFINE_string 'inventory' 'inventory' 'Ansible inventory file to use'
-DEFINE_boolean 'verbose' false 'Enable verbose output, showing all command outputs'
 DEFINE_boolean 'dry-run' false 'Show all commands that would be run without executing them'
 DEFINE_boolean 'debug' false 'Enable detailed debug logging'
 
@@ -95,13 +94,10 @@ parse_args() {
     ANSIBLE_LIMIT="${FLAGS_limit}"
     PLAYBOOK="${FLAGS_playbook}"
     INVENTORY="${FLAGS_inventory}"
-    VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
-    export VERBOSE
     # shellcheck disable=SC2154  # FLAGS_dry_run is set by shflags
     DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
-    export DRY_RUN
+    # shellcheck disable=SC2154  # FLAGS_debug is set by shflags
     DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
-    export DEBUG
 }
 
 # --- Prerequisite Checks ---
@@ -236,7 +232,7 @@ SCRIPT_EOF
         "-l" "$ANSIBLE_LIMIT"
     )
     [[ -n "$ANSIBLE_TAGS" ]] && ansible_playbook_cmd+=("--tags" "$ANSIBLE_TAGS")
-    [[ "$VERBOSE" == true ]] && ansible_playbook_cmd+=("-vv")
+    [[ "$DEBUG" == true ]] && ansible_playbook_cmd+=("-vv")
     [[ "$DRY_RUN" == true ]] && ansible_playbook_cmd+=("--check" "--diff")
     
     local run_script="${mount_point}/root/run-ansible.sh"

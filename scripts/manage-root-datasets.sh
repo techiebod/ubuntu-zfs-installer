@@ -28,7 +28,6 @@ DEFINE_string 'pool' "${DEFAULT_POOL_NAME}" 'The ZFS pool to operate on' 'p'
 DEFINE_string 'mount_base' "${DEFAULT_MOUNT_BASE}" 'Base directory where datasets are mounted for building' 'm'
 DEFINE_boolean 'cleanup' false 'When creating, destroy any existing dataset with the same name first'
 DEFINE_boolean 'force' false 'For destroy, bypass the confirmation prompt'
-DEFINE_boolean 'verbose' false 'Enable verbose output, showing all command outputs'
 DEFINE_boolean 'dry-run' false 'Show all commands that would be run without executing them'
 DEFINE_boolean 'debug' false 'Enable detailed debug logging'
 
@@ -257,8 +256,8 @@ promote_to_bootfs() {
 
 # --- Function to list datasets ---
 list_root_datasets() {
-    # Show status information in verbose mode or for human-readable list output
-    if [[ "${VERBOSE:-false}" == "true" ]]; then
+    # Show status information in debug mode or for human-readable list output
+    if [[ "${DEBUG:-false}" == "true" ]]; then
         log_info "Listing ZFS root datasets in pool '$POOL_NAME'..."
     fi
     check_zfs_pool "$POOL_NAME"
@@ -373,11 +372,8 @@ parse_args() {
     # Convert shflags boolean values (0=true, 1=false) to traditional bash boolean
     CLEANUP=$([ "${FLAGS_cleanup}" -eq 0 ] && echo "true" || echo "false")
     FORCE_DESTROY=$([ "${FLAGS_force}" -eq 0 ] && echo "true" || echo "false")
-    # shellcheck disable=SC2034
-    VERBOSE=$([ "${FLAGS_verbose}" -eq 0 ] && echo "true" || echo "false")
     # shellcheck disable=SC2034,SC2154  # FLAGS_dry_run is set by shflags
     DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
-    # shellcheck disable=SC2034
     DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
 }
 

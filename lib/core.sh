@@ -72,7 +72,6 @@ readonly LOG_LEVEL
 
 # --- Global State Variables ---
 # These are intended to be set by the calling script via argument parsing
-export VERBOSE=false
 export DRY_RUN=false
 export DEBUG=false
 export LOG_WITH_TIMESTAMPS=true

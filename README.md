@@ -302,7 +302,7 @@ All scripts support consistent flags:
 ```bash
 --verbose      # Enable verbose output
 --dry-run      # Show commands without executing
---debug        # Enable debug output
+--debug        # Enable debug output (also logs debug info to files)
 --snapshots    # Force enable ZFS snapshots (enabled by default)
 --no-snapshots # Disable ZFS snapshots at build stages
 --cleanup      # Remove existing build datasets before starting

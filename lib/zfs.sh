@@ -49,7 +49,7 @@ zfs_create_dataset() {
         return 0
     fi
     
-    # Always use proper logging - log_info respects VERBOSE mode internally
+    # Always use proper logging - log_info respects DEBUG mode internally
     local options_str=""
     if [[ ${#options[@]} -gt 0 ]]; then
         options_str=" ${options[*]}"
@@ -80,7 +80,7 @@ zfs_destroy_dataset() {
         return 0
     fi
     
-    # Always use proper logging - log_info respects VERBOSE mode internally
+    # Always use proper logging - log_info respects DEBUG mode internally
     log_info "Destroying dataset: $dataset"
     
     local destroy_args=()

@@ -43,6 +43,18 @@ DEBUG="${DEBUG:-false}"
 set_build_log_context() {
     BUILD_LOG_CONTEXT="$1"
     log_debug "Build logging context set to: $BUILD_LOG_CONTEXT"
+    
+    # Log a notification about file logging to the log file
+    if [[ -n "$BUILD_LOG_CONTEXT" ]]; then
+        local log_file
+        log_file=$(get_build_log_file)
+        if [[ -n "$log_file" ]]; then
+            # Ensure directory exists
+            mkdir -p "$(dirname "$log_file")"
+            # Add informational message about debug logging
+            echo "$(date -Iseconds) [DEBUG] File logging enabled, with full DEBUG information" >> "$log_file"
+        fi
+    fi
 }
 
 # Clear the build context
@@ -121,19 +133,23 @@ _log_to() {
             fi
         fi
         
-        # Log to file if requested and build context is set (but not in dry-run mode)
-        if [[ $((destination & LOG_DEST_FILE)) -ne 0 && -n "$BUILD_LOG_CONTEXT" && "${DRY_RUN:-false}" != "true" ]]; then
-            local log_file
-            log_file=$(get_build_log_file)
-            if [[ -n "$log_file" ]]; then
-                # Ensure directory exists
-                mkdir -p "$(dirname "$log_file")"
-                # Use ISO format timestamp for file logs
-                echo "$(date -Iseconds) [$level] $message" >> "$log_file"
+        # Log to file if requested and build context is set
+        # For debug level, always log to file (even in dry-run mode) for troubleshooting
+        if [[ $((destination & LOG_DEST_FILE)) -ne 0 && -n "$BUILD_LOG_CONTEXT" ]]; then
+            # Skip file logging in dry-run mode except for debug messages
+            if [[ "${DRY_RUN:-false}" != "true" || "$level" == "DEBUG" ]]; then
+                local log_file
+                log_file=$(get_build_log_file)
+                if [[ -n "$log_file" ]]; then
+                    # Ensure directory exists
+                    mkdir -p "$(dirname "$log_file")"
+                    # Use ISO format timestamp for file logs
+                    echo "$(date -Iseconds) [$level] $message" >> "$log_file"
+                fi
+            elif [[ "${DRY_RUN:-false}" == "true" && "$level" != "DEBUG" ]]; then
+                # In dry-run mode, show what would be logged to file (except debug)
+                log_debug "[DRY RUN] Would log to file: $message"
             fi
-        elif [[ "${DRY_RUN:-false}" == "true" && $((destination & LOG_DEST_FILE)) -ne 0 && -n "$BUILD_LOG_CONTEXT" ]]; then
-            # In dry-run mode, show what would be logged to file
-            log_debug "[DRY RUN] Would log to file: $message"
         fi
     fi
 }
@@ -165,8 +181,21 @@ log_build_info() { _log_to "INFO" "$LOG_DEST_BOTH" "$@"; }
 log_build_error() { _log_to "ERROR" "$LOG_DEST_BOTH" "$@"; }
 log_build_warn() { _log_to "WARN" "$LOG_DEST_BOTH" "$@"; }
 log_build_debug() {
+    # Always log debug info to file for troubleshooting (bypass level filtering)
+    if [[ -n "$BUILD_LOG_CONTEXT" ]]; then
+        local log_file
+        log_file=$(get_build_log_file)
+        if [[ -n "$log_file" ]]; then
+            # Ensure directory exists
+            mkdir -p "$(dirname "$log_file")"
+            # Use ISO format timestamp for file logs
+            echo "$(date -Iseconds) [DEBUG] $*" >> "$log_file"
+        fi
+    fi
+    
+    # Show on console only if debug mode is enabled
     if [[ "${DEBUG:-false}" == "true" ]]; then
-        _log_to "DEBUG" "$LOG_DEST_BOTH" "$@"
+        _log_to "DEBUG" "$LOG_DEST_CONSOLE" "$@"
     fi
 }
 
@@ -177,6 +206,7 @@ log_build_debug() {
 log_file_info() { _log_to "INFO" "$LOG_DEST_FILE" "$@"; }
 log_file_error() { _log_to "ERROR" "$LOG_DEST_FILE" "$@"; }
 log_file_warn() { _log_to "WARN" "$LOG_DEST_FILE" "$@"; }
+log_file_debug() { _log_to "DEBUG" "$LOG_DEST_FILE" "$@"; }
 
 # ==============================================================================
 # SPECIALIZED LOGGING FUNCTIONS

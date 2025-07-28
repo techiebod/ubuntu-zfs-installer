@@ -114,7 +114,7 @@ EOF
 
 # Main script logic
 main() {
-    # Override default logging to be less verbose for CLI use
+    # Override default logging to be quieter for CLI use
     _log() { echo "$2"; }
     log_info() { echo "$*"; }
     log_error() { echo "Error: $*" >&2; }

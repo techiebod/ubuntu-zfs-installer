@@ -166,7 +166,7 @@ build_clear_status() {
     status_file=$(build_get_status_file "$build_name")
     log_file=$(build_get_log_file "$build_name")
     
-    # Use run_cmd to handle DRY_RUN/DEBUG/VERBOSE output automatically
+    # Use run_cmd to handle DRY_RUN/DEBUG output automatically
     if [[ -f "$status_file" ]]; then
         run_cmd rm -f "$status_file"
     fi
@@ -520,7 +520,7 @@ build_clean_artifacts() {
     if declare -f zfs_get_root_dataset_path >/dev/null 2>&1; then
         dataset=$(zfs_get_root_dataset_path "$pool_name" "$build_name")
         if declare -f zfs_dataset_exists >/dev/null 2>&1 && zfs_dataset_exists "$dataset"; then
-            if [[ "${VERBOSE:-false}" == "true" || "${DEBUG:-false}" == "true" ]]; then
+            if [[ "${DEBUG:-false}" == "true" ]]; then
                 log_info "Destroying ZFS dataset: $dataset"
             fi
             
