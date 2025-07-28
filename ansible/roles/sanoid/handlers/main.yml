@@ -1,14 +1,8 @@
 ---
 # Sanoid handlers
 
-- name: check if systemd is running as PID 1 for sanoid
-  command: ps -p 1 -o comm=
-  register: sanoid_handler_pid1_check
-  changed_when: false
-  failed_when: false
-
 - name: restart sanoid
   systemd:
     name: sanoid.timer
     state: restarted
-  when: sanoid_handler_pid1_check.stdout == "systemd"
+  tags: [sanoid]

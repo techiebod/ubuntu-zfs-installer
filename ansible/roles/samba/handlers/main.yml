@@ -1,14 +1,8 @@
 ---
 # Handlers for samba role
 
-- name: check if systemd is running as PID 1 for samba
-  command: ps -p 1 -o comm=
-  register: samba_handler_pid1_check
-  changed_when: false
-  failed_when: false
-
 - name: restart avahi-daemon
   service:
     name: avahi-daemon
     state: restarted
-  when: samba_handler_pid1_check.stdout == "systemd"
+  tags: [samba, avahi]

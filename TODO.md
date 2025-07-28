@@ -1,9 +1,18 @@
 # Ubuntu ZFS Installer - TODO
 
 ## 🚨 Critical Issues
+- [ ] **CRITICAL**: Fix Ansible secrets loading for system users creation
+  - [ ] Focus on henry user only for now (timemachine/paperless users temporarily disabled)
+  - [ ] system_users task may still skip due to missing secrets.users variables  
+  - [ ] Need to load secrets.sops.yaml or provide mechanism for password-less user creation in build environment
 - [ ] **CRITICAL**: Add tests for get-ubuntu-version.sh script to prevent regression
 - [ ] **CRITICAL**: Add tests for ubuntu-api.sh _get_latest_ubuntu_version function  
 - [ ] **CRITICAL**: Add tests for run_cmd_read with complex piped commands
+- [ ] **CRITICAL**: Separate container creation from package installation in Stage 5
+  - [ ] Split Stage 5 into: 5a) Create container, 5b) Install packages  
+  - [ ] Ensures package installation failures are properly detected and handled
+  - [ ] Allows for better error recovery and debugging of package installation issues
+- [ ] Fix truncated help message from manage-build-status.sh
 
 ## 🔥 Next Phase Priorities
 

@@ -153,21 +153,22 @@ extra_packages:
 # System users to create
 system_users:
   - name: henry
-    password_hash: "{{ secrets.users.henry.password_hash }}"
+    password_hash: "{{ secrets.users.henry.password_hash | default('!') }}"
     uid: 1000  # Preserve existing UID
     group: henry  # Primary group
     groups: ["adm", "docker", "sudo"]  # Essential groups for system access
     shell: /bin/zsh  # Ensure zsh is the default shell
     home: /home/henry  # Explicit home directory (on ZFS partition)
     create_home: true  # Ensure home exists but won't overwrite existing
-  - name: timemachine
-    password_hash: "{{ secrets.users.timemachine.password_hash }}"
-    shell: /bin/false
-    groups: []
-  - name: paperless
-    password_hash: "{{ secrets.users.paperless.password_hash }}"
-    shell: /bin/false
-    groups: []
+  # Temporarily disabled until secrets are properly loaded
+  # - name: timemachine
+  #   password_hash: "{{ secrets.users.timemachine.password_hash | default('!') }}"
+  #   shell: /bin/false
+  #   groups: []
+  # - name: paperless
+  #   password_hash: "{{ secrets.users.paperless.password_hash | default('!') }}"
+  #   shell: /bin/false
+  #   groups: []
 
 
 # Enable Samba file server
@@ -231,31 +232,33 @@ samba_global_config_extras: |
 samba_users:
   - name: henry
     password: "temp_password"  # This will be synced with system password
-  - name: timemachine
-    password: "temp_password"  # This will be synced with system password
-  - name: paperless
-    password: "temp_password"  # This will be synced with system password
+  # Temporarily disabled until system users are created
+  # - name: timemachine
+  #   password: "temp_password"  # This will be synced with system password
+  # - name: paperless
+  #   password: "temp_password"  # This will be synced with system password
 
 # Samba shares configuration
 samba_shares:
-  - name: timemachine
-    comment: "Time Machine Backup"
-    path: /fs/TimeMachine
-    vfs_objects:
-      - name: catia
-      - name: fruit
-        options:
-          - name: time machine
-            value: "yes"
-          - name: time machine max size
-            value: "100G"
-      - name: streams_xattr
-    valid_users: timemachine
-    browseable: true
-    guest_ok: false
-    writeable: true
-    create_mode: "0644"
-    directory_mode: "0755"
+  # Temporarily disabled until timemachine user is created
+  # - name: timemachine
+  #   comment: "Time Machine Backup"
+  #   path: /fs/TimeMachine
+  #   vfs_objects:
+  #     - name: catia
+  #     - name: fruit
+  #       options:
+  #         - name: time machine
+  #           value: "yes"
+  #         - name: time machine max size
+  #           value: "100G"
+  #     - name: streams_xattr
+  #   valid_users: timemachine
+  #   browseable: true
+  #   guest_ok: false
+  #   writeable: true
+  #   create_mode: "0644"
+  #   directory_mode: "0755"
 
   - name: media
     comment: "Media Files"
