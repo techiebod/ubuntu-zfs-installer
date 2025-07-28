@@ -205,6 +205,20 @@ invoke_script() {
     run_cmd "$script_dir/$script_name" "${args[@]}"
 }
 
+# Invoke a script that handles its own dry-run behavior
+# This always executes the script (even in dry-run mode) but ensures dry-run flags are passed
+# Usage: invoke_script_with_dry_run "manage-root-datasets.sh" "--pool" "$POOL_NAME" "create" "$BUILD_NAME"
+invoke_script_with_dry_run() {
+    local script_name="$1"
+    shift
+    
+    local args=("$@")
+    add_common_flags args
+    
+    # Always execute the script, even in dry-run mode, since it handles its own dry-run behavior
+    "$script_dir/$script_name" "${args[@]}"
+}
+
 # Show standardized help for common options
 show_common_options_help() {
     cat << EOF

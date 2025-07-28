@@ -209,11 +209,11 @@ main() {
     local mmdebstrap_cmd
     mmdebstrap_cmd=$(cat <<EOF
 set -euo pipefail
-log_info 'Updating package lists...'
+echo 'Updating package lists...'
 apt-get update -qq
-log_info 'Installing mmdebstrap and dependencies...'
+echo 'Installing mmdebstrap and dependencies...'
 apt-get install -y -qq mmdebstrap wget gnupg
-log_info 'Creating $DISTRIBUTION $VERSION ($CODENAME) base image...'
+echo 'Creating $DISTRIBUTION $VERSION ($CODENAME) base image...'
 mmdebstrap \\
     --arch=$ARCH \\
     --variant=$VARIANT \\

@@ -113,6 +113,26 @@ _log_to() {
             timestamp="$(date +'%Y-%m-%d %H:%M:%S') "
         fi
         
+        # Auto-detect calling script name for context
+        local script_name=""
+        if [[ "${LOG_SHOW_SCRIPT:-true}" == "true" ]]; then
+            # Get the script name from the call stack, skipping logging functions
+            local caller_info
+            for ((i=1; i<10; i++)); do
+                caller_info=$(caller $i 2>/dev/null) || break
+                local caller_file
+                caller_file=$(echo "$caller_info" | cut -d' ' -f3)
+                local caller_basename
+                caller_basename=$(basename "$caller_file" .sh)
+                
+                # Skip logging-related files and functions
+                if [[ "$caller_basename" != "logging" && "$caller_basename" != "core" ]]; then
+                    script_name="[$caller_basename] "
+                    break
+                fi
+            done
+        fi
+        
         # Log to console if requested
         if [[ $((destination & LOG_DEST_CONSOLE)) -ne 0 ]]; then
             # Color codes for different log levels
@@ -127,9 +147,9 @@ _log_to() {
             
             # Output with color if terminal supports it
             if [[ -t 2 ]]; then
-                echo -e "${timestamp}${color}[$level]${reset} $message" >&2
+                echo -e "${timestamp}${script_name}${color}[$level]${reset} $message" >&2
             else
-                echo "${timestamp}[$level] $message" >&2
+                echo "${timestamp}${script_name}[$level] $message" >&2
             fi
         fi
         
@@ -144,7 +164,7 @@ _log_to() {
                     # Ensure directory exists
                     mkdir -p "$(dirname "$log_file")"
                     # Use ISO format timestamp for file logs
-                    echo "$(date -Iseconds) [$level] $message" >> "$log_file"
+                    echo "$(date -Iseconds) ${script_name}[$level] $message" >> "$log_file"
                 fi
             elif [[ "${DRY_RUN:-false}" == "true" && "$level" != "DEBUG" ]]; then
                 # In dry-run mode, show what would be logged to file (except debug)

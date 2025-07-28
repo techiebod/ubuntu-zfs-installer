@@ -32,8 +32,6 @@ define_common_flags  # Add standard dry-run and debug flags
 # Status progression is available via STATUS_PROGRESSION from constants.sh
 
 # --- Functions ---
-# Status file and log file path helpers now use library functions
-
 log_build_event() {
     local build_name="$1"
     local message="$2"
@@ -47,78 +45,6 @@ log_build_event() {
     
     # Restore previous context
     BUILD_LOG_CONTEXT="$old_context"
-}
-
-set_status() {
-    local status="$1"
-    local build_name="$2"
-    
-    # Use library function instead of manual implementation
-    build_set_status "$build_name" "$status"
-    
-    # Log the status change using integrated logging
-    log_status_change "$build_name" "" "$status" false
-}
-
-get_status() {
-    local build_name="$1"
-    # Use library function instead of manual implementation
-    build_get_status "$build_name"
-}
-
-get_status_timestamp() {
-    local build_name="$1"
-    # Use library function instead of manual implementation
-    build_get_status_timestamp "$build_name"
-}
-
-clear_status() {
-    local build_name="$1"
-    # Use library function instead of manual implementation
-    build_clear_status "$build_name"
-}
-
-clean_build() {
-    local build_name="$1"
-    local pool_name="${2:-$DEFAULT_POOL_NAME}"
-    
-    # Use library function for comprehensive cleanup
-    build_clean_all_artifacts "$build_name" "$pool_name"
-}
-
-list_builds_with_status() {
-    # Use library function instead of manual implementation
-    build_list_all_with_status
-}
-
-show_build_details() {
-    local build_name="$1"
-    local pool_name="${2:-$DEFAULT_POOL_NAME}"
-    
-    # Use library function instead of complex manual implementation
-    build_show_details "$build_name" "$pool_name"
-}
-
-show_build_history() {
-    local build_name="$1"
-    
-    # Use library function instead of manual implementation
-    build_show_history "$build_name"
-}
-
-get_next_stage() {
-    local current_status="$1"
-    # Use library function instead of manual implementation
-    build_get_next_stage "$current_status"
-}
-
-should_run_stage() {
-    local stage="$1"
-    local build_name="$2"
-    local force_restart="${3:-false}"
-    
-    # Use library function instead of manual implementation
-    build_should_run_stage "$stage" "$build_name" "$force_restart"
 }
 
 # --- Usage Information ---
@@ -228,41 +154,42 @@ main() {
             if [[ $# -ne 2 ]]; then
                 die "Usage: $(basename "$0") set STATUS BUILD_NAME"
             fi
-            set_status "$1" "$2"
+            build_set_status "$2" "$1"
+            log_status_change "$2" "" "$1" false
             ;;
         get)
             if [[ $# -ne 1 ]]; then
                 die "Usage: $(basename "$0") get BUILD_NAME"
             fi
-            get_status "$1"
+            build_get_status "$1"
             ;;
         clean)
             if [[ $# -lt 1 ]]; then
                 die "Usage: $(basename "$0") clean BUILD_NAME"
             fi
-            clean_build "$1" "$POOL_NAME"
+            build_clean_artifacts "$1" "$POOL_NAME"
             ;;
         clear)
             # Internal command - not documented in usage
             if [[ $# -ne 1 ]]; then
                 die "Usage: $(basename "$0") clear BUILD_NAME"
             fi
-            clear_status "$1"
+            build_clear_status "$1"
             ;;
         list)
-            list_builds_with_status
+            build_list_all_with_status
             ;;
         show)
             if [[ $# -lt 1 ]]; then
                 die "Usage: $(basename "$0") show BUILD_NAME"
             fi
-            show_build_details "$1" "$POOL_NAME"
+            build_show_details "$1" "$POOL_NAME"
             ;;
         history)
             if [[ $# -ne 1 ]]; then
                 die "Usage: $(basename "$0") history BUILD_NAME"
             fi
-            show_build_history "$1"
+            build_show_history "$1"
             ;;
         log)
             if [[ $# -ne 2 ]]; then
@@ -275,9 +202,9 @@ main() {
                 die "Usage: $(basename "$0") next BUILD_NAME"
             fi
             local current_status
-            current_status=$(get_status "$1")
+            current_status=$(build_get_status "$1")
             if [[ -n "$current_status" ]]; then
-                get_next_stage "$current_status"
+                build_get_next_stage "$current_status"
             fi
             ;;
         should-run)
@@ -285,7 +212,7 @@ main() {
                 die "Usage: $(basename "$0") should-run STAGE BUILD_NAME [force]"
             fi
             local force="${3:-false}"
-            if should_run_stage "$1" "$2" "$force"; then
+            if build_should_run_stage "$1" "$2" "$force"; then
                 echo "yes"
                 exit 0
             else

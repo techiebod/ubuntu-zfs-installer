@@ -71,7 +71,7 @@ readonly DEFAULT_ARCH
 readonly DEFAULT_VARIANT
 readonly DEFAULT_DOCKER_IMAGE
 readonly STATUS_DIR
-readonly LOG_LEVEL
+# Note: LOG_LEVEL is not readonly to allow --debug flag override
 
 # --- Global State Variables ---
 # These are intended to be set by the calling script via argument parsing

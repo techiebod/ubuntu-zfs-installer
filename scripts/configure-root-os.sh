@@ -125,7 +125,11 @@ check_prerequisites() {
     if ! "$script_dir/manage-root-datasets.sh" --pool "$POOL_NAME" list | grep -q "^${BUILD_NAME}[[:space:]]"; then
         local dataset
         dataset=$(zfs_get_root_dataset_path "$POOL_NAME" "$BUILD_NAME")
-        die "Target dataset '$dataset' does not exist. Use manage-root-datasets.sh to create it first."
+        if [[ "$DRY_RUN" == true ]]; then
+            log_warn "Target dataset '$dataset' does not exist, but continuing with dry-run simulation"
+        else
+            die "Target dataset '$dataset' does not exist. Use manage-root-datasets.sh to create it first."
+        fi
     fi
 
     log_info "All prerequisite checks passed."
@@ -147,7 +151,11 @@ main() {
     local mount_point="${DEFAULT_MOUNT_BASE}/${BUILD_NAME}"
     log_debug "Target mountpoint: $mount_point"
     if [[ ! -d "$mount_point" ]]; then
-        die "Target mountpoint '$mount_point' does not exist or is not mounted. Use manage-root-datasets.sh to mount the dataset first."
+        if [[ "$DRY_RUN" == true ]]; then
+            log_warn "Target mountpoint '$mount_point' does not exist or is not mounted, but continuing with dry-run simulation"
+        else
+            die "Target mountpoint '$mount_point' does not exist or is not mounted. Use manage-root-datasets.sh to mount the dataset first."
+        fi
     fi
 
     # Set Ansible limit if not provided
@@ -203,7 +211,10 @@ main() {
     
     # Create the ansible setup script inside the container
     local setup_script="${mount_point}/root/setup-ansible.sh"
-    cat > "$setup_script" << 'SCRIPT_EOF'
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "[DRY RUN] Would create setup script: $setup_script"
+    else
+        cat > "$setup_script" << 'SCRIPT_EOF'
 #!/bin/bash
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
@@ -220,7 +231,8 @@ else
     log_info 'No requirements.yml found, skipping role installation.'
 fi
 SCRIPT_EOF
-    chmod +x "$setup_script"
+        chmod +x "$setup_script"
+    fi
 
     # Create the main ansible execution script
     local ansible_playbook_cmd=(
@@ -235,14 +247,18 @@ SCRIPT_EOF
     [[ "$DRY_RUN" == true ]] && ansible_playbook_cmd+=("--check" "--diff")
     
     local run_script="${mount_point}/root/run-ansible.sh"
-    cat > "$run_script" << SCRIPT_EOF
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "[DRY RUN] Would create ansible execution script: $run_script"
+    else
+        cat > "$run_script" << SCRIPT_EOF
 #!/bin/bash
 set -euo pipefail
 cd /opt/ansible-config
 log_info 'Executing Ansible playbook...'
 ${ansible_playbook_cmd[*]}
 SCRIPT_EOF
-    chmod +x "$run_script"
+        chmod +x "$run_script"
+    fi
 
     # Execute Ansible setup and playbook in the container
     log_info "Setting up Ansible dependencies in container..."

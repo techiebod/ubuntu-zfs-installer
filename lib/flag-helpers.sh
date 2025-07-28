@@ -36,6 +36,11 @@ process_common_flags() {
     DRY_RUN=$([ "${FLAGS_dry_run}" -eq 0 ] && echo "true" || echo "false")
     # shellcheck disable=SC2034  # DRY_RUN and DEBUG are exported in core.sh
     DEBUG=$([ "${FLAGS_debug}" -eq 0 ] && echo "true" || echo "false")
+    
+    # Override LOG_LEVEL to DEBUG when debug flag is enabled
+    if [[ "$DEBUG" == "true" ]]; then
+        LOG_LEVEL="DEBUG"
+    fi
 }
 
 # ==============================================================================

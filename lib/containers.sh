@@ -82,6 +82,38 @@ container_wait_for_systemd() {
 }
 
 # ==============================================================================
+# CONTAINER VALIDATION
+# ==============================================================================
+
+# Validate that a directory looks like a valid rootfs
+# Usage: container_validate_rootfs "/path/to/directory"
+container_validate_rootfs() {
+    local rootfs_path="$1"
+    
+    # Check if directory exists
+    if [[ ! -d "$rootfs_path" ]]; then
+        return 1
+    fi
+    
+    # Check for essential rootfs directories/files
+    local essential_paths=(
+        "$rootfs_path/etc"
+        "$rootfs_path/usr"
+        "$rootfs_path/bin"
+        "$rootfs_path/sbin"
+    )
+    
+    for path in "${essential_paths[@]}"; do
+        if [[ ! -e "$path" ]]; then
+            log_debug "Missing essential rootfs component: $path"
+            return 1
+        fi
+    done
+    
+    return 0
+}
+
+# ==============================================================================
 # CONTAINER LIFECYCLE OPERATIONS
 # ==============================================================================
 
@@ -121,42 +153,31 @@ container_create() {
     
     log_info "Creating container '$container_name' for build '$build_name'..."
     
-    # Validate dataset exists
-    local dataset
-    dataset=$(zfs_get_root_dataset_path "$pool_name" "$build_name")
-    if ! zfs_dataset_exists "$dataset"; then
-        die "Target dataset '$dataset' does not exist"
-    fi
-    
-    # Get mount point
+    # Get mount point (assume it follows the standard pattern if not provided)
     if [[ -z "$mount_point" ]]; then
-        mount_point=$(zfs_get_property "$dataset" "mountpoint")
-        if [[ "$mount_point" == "none" || "$mount_point" == "legacy" ]]; then
-            mount_point="${DEFAULT_MOUNT_BASE}/${build_name}"
-        fi
+        mount_point="${DEFAULT_MOUNT_BASE}/${build_name}"
     fi
     
-    if [[ ! -d "$mount_point" ]]; then
-        die "Target mountpoint '$mount_point' does not exist or is not mounted"
+    # Validate that the directory looks like a valid rootfs
+    if ! container_validate_rootfs "$mount_point"; then
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            log_warn "Target directory '$mount_point' does not look like a valid rootfs, but continuing with dry-run simulation"
+        else
+            die "Target directory '$mount_point' does not exist or does not look like a valid rootfs"
+        fi
     fi
     
     if container_is_running "$container_name"; then
-        die "Container '$container_name' is already running"
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            log_warn "Container '$container_name' is already running, but continuing with dry-run simulation"
+        else
+            die "Container '$container_name' is already running"
+        fi
     fi
     
     # Copy hostid for ZFS compatibility
-    local host_id
-    host_id=$(hostid)
-    log_debug "Copying hostid '$host_id' to container for ZFS compatibility..."
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would copy hostid to container"
-    else
-        if ! cp /etc/hostid "$mount_point/etc/hostid" 2>/dev/null; then
-            log_debug "Creating hostid file in container..."
-            echo "$host_id" > "$mount_point/etc/hostid"
-        fi
-    fi
+    log_debug "Copying hostid '$(hostid)' to container for ZFS compatibility..."
+    run_cmd cp /etc/hostid "$mount_point/etc/hostid"
     
     # Install packages if requested
     if [[ -n "$install_packages" ]]; then
@@ -210,18 +231,17 @@ container_start() {
     
     log_info "Starting container '$container_name'..."
     
-    # Validate dataset exists
-    local dataset
-    dataset=$(zfs_get_root_dataset_path "$pool_name" "$build_name")
-    if ! zfs_dataset_exists "$dataset"; then
-        die "Target dataset '$dataset' does not exist"
+    # Get mount point (assume it follows the standard pattern if not provided)
+    if [[ -z "$mount_point" ]]; then
+        mount_point="${DEFAULT_MOUNT_BASE}/${build_name}"
     fi
     
-    # Get mount point
-    if [[ -z "$mount_point" ]]; then
-        mount_point=$(zfs_get_property "$dataset" "mountpoint")
-        if [[ "$mount_point" == "none" || "$mount_point" == "legacy" ]]; then
-            mount_point="${DEFAULT_MOUNT_BASE}/${build_name}"
+    # Validate that the directory looks like a valid rootfs
+    if ! container_validate_rootfs "$mount_point"; then
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            log_warn "Target directory '$mount_point' does not look like a valid rootfs, but continuing with dry-run simulation"
+        else
+            die "Target directory '$mount_point' does not exist or does not look like a valid rootfs"
         fi
     fi
     
@@ -356,11 +376,6 @@ container_install_packages() {
     local package_list
     package_list=$(echo "$packages" | tr ',' ' ')
     
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would install packages: $package_list"
-        return 0
-    fi
-    
     if ! run_cmd chroot "$mount_point" bash -c "
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -q
@@ -383,11 +398,6 @@ container_setup_networking() {
     
     log_info "Enabling systemd-networkd and systemd-resolved services..."
     
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would enable networking services"
-        return 0
-    fi
-    
     if ! run_cmd chroot "$mount_point" bash -c "
         systemctl enable systemd-networkd
         systemctl enable systemd-resolved
@@ -406,16 +416,11 @@ container_start_networking() {
     
     log_info "Starting networking services in container..."
     
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would start networking services in container"
-        return 0
-    fi
-    
     # Start networking services (non-fatal if they fail)
-    systemd-run --machine="$container_name" --wait systemctl start systemd-networkd || \
+    run_cmd systemd-run --machine="$container_name" --wait systemctl start systemd-networkd || \
         log_warn "Failed to start systemd-networkd"
     
-    systemd-run --machine="$container_name" --wait systemctl start systemd-resolved || \
+    run_cmd systemd-run --machine="$container_name" --wait systemctl start systemd-resolved || \
         log_warn "Failed to start systemd-resolved"
     
     log_debug "Networking services started"
@@ -438,12 +443,7 @@ container_exec() {
         die "Container '$container_name' is not running"
     fi
     
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would execute in container: ${command[*]}"
-        return 0
-    fi
-    
-    systemd-run --machine="$container_name" --wait "${command[@]}"
+    run_cmd systemd-run --machine="$container_name" --wait "${command[@]}"
 }
 
 # Open an interactive shell in a running container
@@ -458,12 +458,7 @@ container_shell() {
         die "Container '$container_name' is not running"
     fi
     
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would open shell in container: $shell"
-        return 0
-    fi
-    
-    machinectl shell "$container_name" "$shell"
+    run_cmd machinectl shell "$container_name" "$shell"
 }
 
 # ==============================================================================
@@ -586,16 +581,11 @@ container_cleanup_for_build() {
     
     log_info "Stopping and removing container: $container_name"
     
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY RUN] Would stop and remove container: $container_name"
-        return 0
-    fi
-    
     # Stop container (ignore errors)
-    machinectl stop "$container_name" 2>/dev/null || true
+    run_cmd machinectl stop "$container_name" || true
     
     # Remove container (ignore errors)  
-    machinectl remove "$container_name" 2>/dev/null || true
+    run_cmd machinectl remove "$container_name" || true
     
     log_debug "Container cleanup completed for: $container_name"
 }

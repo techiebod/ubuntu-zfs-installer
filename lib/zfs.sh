@@ -104,8 +104,13 @@ zfs_mount_dataset() {
     
     log_debug "Mounting ZFS dataset: $dataset -> $mount_point"
     
+    # Check if dataset exists, with different behavior for dry-run mode
     if ! zfs_dataset_exists "$dataset"; then
-        die "Cannot mount non-existent dataset: $dataset"
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            log_warn "Dataset '$dataset' does not exist, but continuing with dry-run simulation"
+        else
+            die "Cannot mount non-existent dataset: $dataset"
+        fi
     fi
     
     # Create mount point if it doesn't exist
@@ -417,18 +422,12 @@ zfs_mount_root_dataset() {
     
     log_info "Mounting ZFS root dataset: $dataset -> $mount_point"
     
-    # Mount main dataset
+    # Mount main dataset only
+    # Note: Child datasets like varlog should be mounted explicitly when needed
     zfs_mount_dataset "$dataset" "$mount_point"
     
-    # Mount varlog if it exists
-    local varlog_dataset="${dataset}/varlog"
-    if zfs_dataset_exists "$varlog_dataset"; then
-        local varlog_mount="${mount_point}/var/log"
-        mkdir -p "$varlog_mount"
-        zfs_mount_dataset "$varlog_dataset" "$varlog_mount"
-    fi
-    
     log_info "Successfully mounted root dataset at: $mount_point"
+    log_debug "Child datasets (e.g., varlog) are not mounted automatically"
 }
 
 # Promote ZFS dataset to be bootable

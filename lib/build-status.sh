@@ -148,16 +148,15 @@ build_clear_status() {
     local build_name="$1"
     local force=false
     
-    # Check for force flag
-    if [[ "${2:-}" == "--force" ]] || [[ "$1" == "--force" && -n "${2:-}" ]]; then
+    # Check for force flag in second position
+    if [[ "${2:-}" == "--force" ]]; then
         force=true
-        [[ "$1" == "--force" ]] && build_name="${2:-}"
     fi
     
     if [[ "$force" == "true" ]]; then
-        echo "Force clearing all artifacts for: $build_name"
+        log_info "Force clearing all artifacts for: $build_name"
     else
-        echo "Clearing build status: $build_name"
+        log_info "Clearing build status: $build_name"
     fi
     
     local status_file
@@ -167,10 +166,10 @@ build_clear_status() {
     log_file=$(build_get_log_file "$build_name")
     
     # Use run_cmd to handle DRY_RUN/DEBUG output automatically
-    if [[ -f "$status_file" ]]; then
+    if [[ -f "$status_file" ]] || [[ "${DRY_RUN:-false}" == "true" ]]; then
         run_cmd rm -f "$status_file"
     fi
-    if [[ -f "$log_file" ]]; then
+    if [[ -f "$log_file" ]] || [[ "${DRY_RUN:-false}" == "true" ]]; then
         run_cmd rm -f "$log_file"
     fi
     
@@ -518,29 +517,27 @@ build_clean_artifacts() {
     else
         log_debug "container_cleanup_for_build function not available"
     fi
+
+    # Destroy ZFS dataset using the proper management script
+    # Brief wait for container cleanup to fully complete
+    sleep 1
     
-    # Destroy ZFS dataset and all snapshots
-    local dataset
-    if declare -f zfs_get_root_dataset_path >/dev/null 2>&1; then
-        dataset=$(zfs_get_root_dataset_path "$pool_name" "$build_name")
-        if declare -f zfs_dataset_exists >/dev/null 2>&1 && zfs_dataset_exists "$dataset"; then
-            if [[ "${DEBUG:-false}" == "true" ]]; then
-                log_info "Destroying ZFS dataset: $dataset"
-            fi
-            
-            # Brief wait for container cleanup to fully complete
-            sleep 1
-            
-            if declare -f zfs_destroy_dataset >/dev/null 2>&1; then
-                zfs_destroy_dataset "$dataset" --force
-            else
-                log_debug "zfs_destroy_dataset function not available"
-            fi
-        else
-            log_debug "ZFS dataset does not exist: $dataset"
-        fi
+    # Use the dedicated script that handles all ZFS operations properly
+    # invoke_script_with_dry_run expects just the script name, it calculates the path
+    local result=0
+    invoke_script_with_dry_run "manage-root-datasets.sh" --force destroy "$build_name" || result=$?
+    
+    if [[ $result -eq 0 ]]; then
+        log_debug "Successfully delegated ZFS cleanup to manage-root-datasets.sh"
     else
-        log_debug "ZFS functions not available for dataset cleanup"
+        log_debug "ZFS cleanup via manage-root-datasets.sh failed or dataset didn't exist (exit code: $result)"
+    fi
+    
+    # Clean up mount directory if it exists
+    local mount_dir="${DEFAULT_MOUNT_BASE}/${build_name}"
+    if [[ -d "$mount_dir" ]] || [[ "${DRY_RUN:-false}" == "true" ]]; then
+        log_info "Removing mount directory: $mount_dir"
+        run_cmd rmdir "$mount_dir" || log_warn "Failed to remove mount directory: $mount_dir (may not be empty)"
     fi
     
     # Clear status files

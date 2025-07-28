@@ -63,6 +63,7 @@ ACTIONS:
   list                    List all existing root datasets in the pool.
   promote NAME            Promote a dataset to be the default boot environment.
   unmount NAME            Unmount a dataset from the temporary build area.
+  mount-root NAME         Mount the root dataset to the temporary build area.
   mount-varlog NAME       Mount the varlog child dataset for a build.
 
 ARGUMENTS:
@@ -89,6 +90,32 @@ EXAMPLES:
 EOF
 }
 
+# --- Function to mount a root dataset to the build area ---
+mount_root_dataset() {
+    local dataset_name="$1"
+    local dataset
+    dataset=$(zfs_get_root_dataset_path "$POOL_NAME" "$dataset_name")
+    local mount_point="${MOUNT_BASE}/${dataset_name}"
+
+    log_info "Attempting to mount dataset '$dataset' to '$mount_point'..."
+
+    # Check if dataset exists, with different behavior for dry-run mode
+    if ! zfs_dataset_exists "$dataset"; then
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            log_warn "Dataset '$dataset' does not exist, but continuing with dry-run simulation"
+        else
+            log_error "Dataset '$dataset' does not exist. Cannot mount."
+            return 1
+        fi
+    fi
+
+    # Create mount point if it doesn't exist and mount the dataset
+    # Note: zfs_mount_dataset handles both mkdir and mount with proper dry-run support
+    zfs_mount_dataset "$dataset" "$mount_point"
+
+    log_info "Root dataset '$dataset' mounted successfully at '$mount_point'"
+}
+
 # --- Function to unmount a root dataset from the build area ---
 unmount_root_dataset() {
     local dataset_name="$1"
@@ -99,22 +126,32 @@ unmount_root_dataset() {
     log_info "Attempting to unmount dataset '$dataset' from '$mount_point'..."
 
     if ! zfs_dataset_exists "$dataset"; then
-        log_warn "Dataset '$dataset' does not exist. Nothing to unmount."
-        return 0
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            log_warn "Dataset '$dataset' does not exist, but continuing with dry-run simulation"
+        else
+            log_warn "Dataset '$dataset' does not exist. Nothing to unmount."
+            return 0
+        fi
     fi
 
     # Check if the base mountpoint is actually a mountpoint for this dataset
     if ! mountpoint -q "$mount_point"; then
-        log_info "Dataset is not mounted at '$mount_point'. No action needed."
-        return 0
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            log_info "Dataset is not mounted at '$mount_point', but showing unmount commands for dry-run simulation"
+        else
+            log_info "Dataset is not mounted at '$mount_point'. No action needed."
+            return 0
+        fi
     fi
 
     # Check if the correct dataset is mounted there
-    local mounted_fs
-    mounted_fs=$(df --output=source "$mount_point" | tail -n 1)
-    if [[ "$mounted_fs" != "$dataset" ]]; then
-        log_warn "A different filesystem ('$mounted_fs') is mounted at '$mount_point'. Skipping unmount for safety."
-        return 1
+    if [[ "${DRY_RUN:-false}" != "true" ]]; then
+        local mounted_fs
+        mounted_fs=$(df --output=source "$mount_point" | tail -n 1)
+        if [[ "$mounted_fs" != "$dataset" ]]; then
+            log_warn "A different filesystem ('$mounted_fs') is mounted at '$mount_point'. Skipping unmount for safety."
+            return 1
+        fi
     fi
 
     log_info "Unmounting all filesystems under '$mount_point'..."
@@ -179,11 +216,20 @@ destroy_dataset() {
 
     # Check if dataset exists
     if ! zfs list -H -o name "$dataset" &>/dev/null; then
-        die "Dataset '$dataset' does not exist."
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            log_info "Dataset '$dataset' does not exist, but continuing with dry-run simulation"
+            # Continue with simulation - don't return early
+        else
+            die "Dataset '$dataset' does not exist."
+        fi
     fi
 
     if mountpoint -q "$mount_point"; then
         # Use the dedicated unmount function which contains the necessary checks
+        unmount_root_dataset "$build_name"
+    elif [[ "${DRY_RUN:-false}" == "true" ]]; then
+        # In dry-run mode, show what unmount commands would be executed
+        log_info "Dataset '${dataset}' is not currently mounted, but showing unmount commands for dry-run simulation"
         unmount_root_dataset "$build_name"
     else
         log_info "Dataset '${dataset}' is not currently mounted."
@@ -200,7 +246,23 @@ destroy_dataset() {
     fi
 
     local snapshots
-    snapshots=$(zfs list -H -o name -t snapshot -r "$dataset" 2>/dev/null)
+    if [[ "${DRY_RUN:-false}" == "true" ]] && ! zfs list -H -o name "$dataset" &>/dev/null; then
+        # In dry-run mode with non-existent dataset, simulate empty snapshots
+        log_debug "Dataset does not exist - simulating empty snapshots list for dry-run"
+        snapshots=""
+    else
+        snapshots=$(zfs list -H -o name -t snapshot -r "$dataset" 2>/dev/null)
+        if [[ "${DEBUG:-false}" == "true" ]]; then
+            if [[ -n "$snapshots" ]]; then
+                log_debug "Found snapshots for dataset '$dataset':"
+                echo "$snapshots" | while read -r snap; do
+                    log_debug "  $snap"
+                done
+            else
+                log_debug "No snapshots found for dataset '$dataset'"
+            fi
+        fi
+    fi
     
     # Handle confirmation for non-dry-run mode
     if [[ "${DRY_RUN:-false}" != true ]]; then
@@ -351,7 +413,7 @@ parse_args() {
                 exit 1
             fi
             ;;
-        create|destroy|mount-varlog|unmount)
+        create|destroy|mount-root|mount-varlog|unmount)
             if [[ $# -ne 1 ]]; then
                 log_error "Action '$ACTION' requires a NAME argument."
                 echo ""
@@ -418,12 +480,8 @@ main() {
             # Use the high-level ZFS library function
             zfs_create_root_dataset "$POOL_NAME" "$BUILD_NAME"
 
-            log_info "Mounting the new root dataset for build..."
-            zfs_mount_root_dataset "$POOL_NAME" "$BUILD_NAME" "$MOUNT_BASE"
-
             log_info "ZFS root dataset creation for '$BUILD_NAME' complete."
-            log_info "New environment is mounted at: $mount_point"
-            log_info "Note: Child datasets like 'var/log' are not mounted automatically."
+            log_info "Note: Datasets created but not mounted. Use build process or manual mount commands to access."
             ;;
         destroy)
             destroy_dataset "$BUILD_NAME" "$POOL_NAME" "$MOUNT_BASE"
@@ -433,6 +491,9 @@ main() {
             ;;
         unmount)
             unmount_root_dataset "$BUILD_NAME"
+            ;;
+        mount-root)
+            mount_root_dataset "$BUILD_NAME"
             ;;
         mount-varlog)
             mount_varlog_dataset "$BUILD_NAME"

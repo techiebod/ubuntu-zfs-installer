@@ -21,6 +21,7 @@ readonly __CONSTANTS_LIB_LOADED="true"
 # Build status values in progression order
 readonly STATUS_STARTED="started"
 readonly STATUS_DATASETS_CREATED="datasets-created"
+readonly STATUS_ROOT_MOUNTED="root-mounted"
 readonly STATUS_OS_INSTALLED="os-installed"
 readonly STATUS_VARLOG_MOUNTED="varlog-mounted"
 readonly STATUS_CONTAINER_CREATED="container-created"
@@ -32,17 +33,20 @@ readonly STATUS_FAILED="failed"
 readonly VALID_STATUSES=(
     "$STATUS_STARTED"
     "$STATUS_DATASETS_CREATED"
+    "$STATUS_ROOT_MOUNTED"
     "$STATUS_OS_INSTALLED"
     "$STATUS_VARLOG_MOUNTED"
     "$STATUS_CONTAINER_CREATED"
     "$STATUS_ANSIBLE_CONFIGURED"
     "$STATUS_COMPLETED"
+    "$STATUS_FAILED"
 )
 
 # Status progression map - what comes next after each status
 declare -gAx STATUS_PROGRESSION=(
     ["$STATUS_STARTED"]="$STATUS_DATASETS_CREATED"
-    ["$STATUS_DATASETS_CREATED"]="$STATUS_OS_INSTALLED"
+    ["$STATUS_DATASETS_CREATED"]="$STATUS_ROOT_MOUNTED"
+    ["$STATUS_ROOT_MOUNTED"]="$STATUS_OS_INSTALLED"
     ["$STATUS_OS_INSTALLED"]="$STATUS_VARLOG_MOUNTED"
     ["$STATUS_VARLOG_MOUNTED"]="$STATUS_CONTAINER_CREATED"
     ["$STATUS_CONTAINER_CREATED"]="$STATUS_ANSIBLE_CONFIGURED"
@@ -55,30 +59,33 @@ declare -gAx STATUS_PROGRESSION=(
 
 # Stage function names in execution order
 readonly STAGE_1_CREATE_DATASETS="stage_1_create_datasets"
-readonly STAGE_2_INSTALL_OS="stage_2_install_os"
-readonly STAGE_3_MOUNT_VARLOG="stage_3_mount_varlog"
-readonly STAGE_4_CREATE_CONTAINER="stage_4_create_container"
-readonly STAGE_5_CONFIGURE_ANSIBLE="stage_5_configure_ansible"
-readonly STAGE_6_FINALIZE_BUILD="stage_6_finalize_build"
+readonly STAGE_2_MOUNT_ROOT="stage_2_mount_root"
+readonly STAGE_3_INSTALL_OS="stage_3_install_os"
+readonly STAGE_4_MOUNT_VARLOG="stage_4_mount_varlog"
+readonly STAGE_5_CREATE_CONTAINER="stage_5_create_container"
+readonly STAGE_6_CONFIGURE_ANSIBLE="stage_6_configure_ansible"
+readonly STAGE_7_FINALIZE_BUILD="stage_7_finalize_build"
 
 # All stage functions in execution order
 readonly STAGE_FUNCTIONS=(
     "$STAGE_1_CREATE_DATASETS"
-    "$STAGE_2_INSTALL_OS"
-    "$STAGE_3_MOUNT_VARLOG"
-    "$STAGE_4_CREATE_CONTAINER"
-    "$STAGE_5_CONFIGURE_ANSIBLE"
-    "$STAGE_6_FINALIZE_BUILD"
+    "$STAGE_2_MOUNT_ROOT"
+    "$STAGE_3_INSTALL_OS"
+    "$STAGE_4_MOUNT_VARLOG"
+    "$STAGE_5_CREATE_CONTAINER"
+    "$STAGE_6_CONFIGURE_ANSIBLE"
+    "$STAGE_7_FINALIZE_BUILD"
 )
 
 # Map statuses to their corresponding stage functions
 declare -gAx STATUS_TO_STAGE=(
     ["$STATUS_STARTED"]="$STAGE_1_CREATE_DATASETS"
-    ["$STATUS_DATASETS_CREATED"]="$STAGE_2_INSTALL_OS"
-    ["$STATUS_OS_INSTALLED"]="$STAGE_3_MOUNT_VARLOG"
-    ["$STATUS_VARLOG_MOUNTED"]="$STAGE_4_CREATE_CONTAINER"
-    ["$STATUS_CONTAINER_CREATED"]="$STAGE_5_CONFIGURE_ANSIBLE"
-    ["$STATUS_ANSIBLE_CONFIGURED"]="$STAGE_6_FINALIZE_BUILD"
+    ["$STATUS_DATASETS_CREATED"]="$STAGE_2_MOUNT_ROOT"
+    ["$STATUS_ROOT_MOUNTED"]="$STAGE_3_INSTALL_OS"
+    ["$STATUS_OS_INSTALLED"]="$STAGE_4_MOUNT_VARLOG"
+    ["$STATUS_VARLOG_MOUNTED"]="$STAGE_5_CREATE_CONTAINER"
+    ["$STATUS_CONTAINER_CREATED"]="$STAGE_6_CONFIGURE_ANSIBLE"
+    ["$STATUS_ANSIBLE_CONFIGURED"]="$STAGE_7_FINALIZE_BUILD"
 )
 
 # ==============================================================================
