@@ -82,7 +82,7 @@ zroot/ROOT/plucky/varlog → /var/tmp/zfs-builds/plucky/var/log
 Build a complete Ubuntu 25.04 system with hostname "myserver":
 
 ```bash
-sudo ./scripts/build-new-root.sh --verbose --codename plucky plucky-build myserver
+sudo ./scripts/build-new-root.sh --codename plucky plucky-build myserver
 ```
 
 This automatically:
@@ -97,13 +97,13 @@ For more control, run each step manually:
 
 ```bash
 # 1. Create ZFS datasets and mount points
-sudo ./scripts/manage-root-datasets.sh --verbose create plucky-build
+sudo ./scripts/manage-root-datasets.sh create plucky-build
 
 # 2. Build base Ubuntu system (with conditional varlog mounting)
-sudo ./scripts/install-root-os.sh --verbose --codename plucky --pool zroot plucky-build
+sudo ./scripts/install-root-os.sh --codename plucky --pool zroot plucky-build
 
 # 3. Mount varlog after base system creation
-sudo ./scripts/manage-root-datasets.sh --verbose mount-varlog plucky-build
+sudo ./scripts/manage-root-datasets.sh mount-varlog plucky-build
 
 # 4. Configure with Ansible
 sudo ./scripts/configure-root-os.sh --tags docker --pool zroot plucky-build myserver
@@ -121,10 +121,10 @@ The system creates ZFS snapshots at each major build stage by default for easy r
 
 ```bash
 # Build with automatic snapshots (enabled by default)
-sudo ./scripts/build-new-root.sh --verbose --codename plucky plucky-build myserver
+sudo ./scripts/build-new-root.sh --codename plucky plucky-build myserver
 
 # Disable snapshots if not needed
-sudo ./scripts/build-new-root.sh --no-snapshots --verbose --codename plucky plucky-build myserver
+sudo ./scripts/build-new-root.sh --no-snapshots --codename plucky plucky-build myserver
 ```
 
 **Snapshot Stages Created:**
@@ -300,9 +300,8 @@ Pool available space: 45.2G
 All scripts support consistent flags:
 
 ```bash
---verbose      # Enable verbose output
---dry-run      # Show commands without executing
---debug        # Enable debug output (also logs debug info to files)
+--dry-run      # Show commands without executing them
+--debug        # Enable debug output (overrides LOG_LEVEL to DEBUG)
 --snapshots    # Force enable ZFS snapshots (enabled by default)
 --no-snapshots # Disable ZFS snapshots at build stages
 --cleanup      # Remove existing build datasets before starting
@@ -390,10 +389,10 @@ If a build fails or is interrupted, simply re-run the same command:
 
 ```bash
 # This will resume from where it left off
-sudo ./scripts/build-new-root.sh --verbose plucky-build myserver
+sudo ./scripts/build-new-root.sh plucky-build myserver
 
 # Force restart from beginning
-sudo ./scripts/build-new-root.sh --restart --verbose plucky-build myserver
+sudo ./scripts/build-new-root.sh --restart plucky-build myserver
 
 # Check current build status
 sudo ./scripts/manage-build-status.sh list
@@ -629,20 +628,20 @@ Secrets are encrypted using Mozilla [sops](https://github.com/mozilla/sops):
 
 ```bash
 # Build LTS version (snapshots enabled by default)
-sudo ./scripts/build-new-root.sh --verbose --codename noble noble-server server-lts
+sudo ./scripts/build-new-root.sh --codename noble noble-server server-lts
 
 # Build latest version with full debugging
-sudo ./scripts/build-new-root.sh --verbose --debug --codename plucky plucky-server server-latest
+sudo ./scripts/build-new-root.sh --debug --codename plucky plucky-server server-latest
 
 # Build Debian alternative without snapshots
-sudo ./scripts/build-new-root.sh --no-snapshots --verbose --distribution debian --codename bookworm debian-server debian-server
+sudo ./scripts/build-new-root.sh --no-snapshots --distribution debian --codename bookworm debian-server debian-server
 ```
 
 ### Snapshot Workflow
 
 ```bash
 # Build with snapshots enabled
-sudo ./scripts/build-new-root.sh --snapshots --verbose --codename plucky test-build myserver
+sudo ./scripts/build-new-root.sh --snapshots --codename plucky test-build myserver
 
 # Later: rollback to base OS if needed
 sudo ./scripts/manage-root-snapshots.sh list test-build
@@ -662,14 +661,14 @@ Manage long-running builds with automatic resumption:
 
 ```bash
 # Start a build
-sudo ./scripts/build-new-root.sh --snapshots --verbose ubuntu-test myserver
+sudo ./scripts/build-new-root.sh --snapshots ubuntu-test myserver
 
 # If interrupted, check status
 sudo ./scripts/manage-build-status.sh get ubuntu-test
 # Output: os-installed
 
 # Resume from where it left off
-sudo ./scripts/build-new-root.sh --verbose ubuntu-test myserver
+sudo ./scripts/build-new-root.sh ubuntu-test myserver
 # Only runs remaining stages: varlog-mounted, container-created, ansible-configured, completed
 
 # Monitor all builds
@@ -681,7 +680,7 @@ sudo ./scripts/manage-build-status.sh list
 # production           completed            2025-07-25T07:30:22+00:00
 
 # Force complete restart if needed
-sudo ./scripts/build-new-root.sh --restart --verbose ubuntu-test myserver
+sudo ./scripts/build-new-root.sh --restart ubuntu-test myserver
 ```
 
 ### Container-Based Management
