@@ -158,9 +158,14 @@ check_prerequisites() {
     # Check host variables file exists
     local host_vars_file="$PROJECT_ROOT/config/host_vars/${HOSTNAME}.yml"
     if [[ ! -f "$host_vars_file" ]]; then
-        die_with_context \
-            "Host variables file not found: $host_vars_file" \
-            "Create the file with: cp examples/host_vars/ubuntu-minimal.yml config/host_vars/${HOSTNAME}.yml"
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            log_warn "Host variables file not found: $host_vars_file, but continuing with dry-run simulation"
+            log_info "💡 Recovery suggestion: Create the file with: cp examples/host_vars/ubuntu-minimal.yml config/host_vars/${HOSTNAME}.yml"
+        else
+            die_with_context \
+                "Host variables file not found: $host_vars_file" \
+                "Create the file with: cp examples/host_vars/ubuntu-minimal.yml config/host_vars/${HOSTNAME}.yml"
+        fi
     fi
 
     log_debug "Prerequisite validation completed"
@@ -342,11 +347,8 @@ stage_5_create_container() {
     
     local container_name="$BUILD_NAME"
     
-    # Create and start container
+    # Create and start container (container_create now handles both)
     if ! invoke_script_with_dry_run "manage-root-containers.sh" "create" "--pool" "$POOL_NAME" "--name" "$container_name" "--hostname" "$HOSTNAME" "--install_packages" "ansible,python3-apt" "$BUILD_NAME"; then
-        [[ "$DRY_RUN" != "true" ]] && return 1
-    fi
-    if ! invoke_script_with_dry_run "manage-root-containers.sh" "start" "--name" "$container_name" "$BUILD_NAME"; then
         [[ "$DRY_RUN" != "true" ]] && return 1
     fi
     
@@ -519,7 +521,6 @@ main() {
                 log_info "Stage would have failed in real run - continuing dry run"
             else
                 log_error "Stage $next_stage failed"
-                set_build_status "$STATUS_FAILED"
                 exit 1
             fi
         fi

@@ -220,12 +220,6 @@ build_should_run_stage() {
         return 1
     fi
     
-    # Failed builds can restart from any stage
-    if [[ "$current_status" == "$STATUS_FAILED" ]]; then
-        log_debug "Build failed - allowing restart from stage $stage"
-        return 0
-    fi
-    
     # Check if the requested stage comes after the current status in the progression
     local current_index=-1
     local stage_index=-1

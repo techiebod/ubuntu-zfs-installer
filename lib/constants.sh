@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Constants for ZFS build scripts
+# Constants for Ubuntu ZFS Installer Scripts
 #
 # This file contains all constant values used throughout the project
 # to avoid magic strings and improve maintainability.
@@ -27,10 +27,9 @@ readonly STATUS_VARLOG_MOUNTED="varlog-mounted"
 readonly STATUS_CONTAINER_CREATED="container-created"
 readonly STATUS_ANSIBLE_CONFIGURED="ansible-configured"
 readonly STATUS_COMPLETED="completed"
-readonly STATUS_FAILED="failed"
 
-# All valid statuses in progression order
-readonly VALID_STATUSES=(
+# Valid status values that can be stored
+readonly -a VALID_STATUSES=(
     "$STATUS_STARTED"
     "$STATUS_DATASETS_CREATED"
     "$STATUS_ROOT_MOUNTED"
@@ -39,7 +38,6 @@ readonly VALID_STATUSES=(
     "$STATUS_CONTAINER_CREATED"
     "$STATUS_ANSIBLE_CONFIGURED"
     "$STATUS_COMPLETED"
-    "$STATUS_FAILED"
 )
 
 # Status progression map - what comes next after each status

@@ -117,8 +117,9 @@ container_validate_rootfs() {
 # CONTAINER LIFECYCLE OPERATIONS
 # ==============================================================================
 
-# Create and prepare a container from a ZFS dataset
+# Create, start, and prepare a container from a ZFS dataset
 # Usage: container_create "pool" "build-name" "container-name" [options...]
+# This function creates the container, starts it, and installs any specified packages
 container_create() {
     local pool_name="$1"
     local build_name="$2"
@@ -171,7 +172,8 @@ container_create() {
         if [[ "${DRY_RUN:-false}" == "true" ]]; then
             log_warn "Container '$container_name' is already running, but continuing with dry-run simulation"
         else
-            die "Container '$container_name' is already running"
+            log_info "Container '$container_name' is already running - skipping creation"
+            return 0
         fi
     fi
     
@@ -179,15 +181,28 @@ container_create() {
     log_debug "Copying hostid '$(hostid)' to container for ZFS compatibility..."
     run_cmd cp /etc/hostid "$mount_point/etc/hostid"
     
-    # Install packages if requested
-    if [[ -n "$install_packages" ]]; then
-        container_install_packages "$mount_point" "$install_packages"
+    log_info "Container '$container_name' created and prepared"
+    
+    # Start the container to enable package installation and service configuration
+    log_info "Starting container '$container_name' for package installation..."
+    if ! container_start "$pool_name" "$build_name" "$container_name" --hostname "$hostname"; then
+        die "Failed to start container '$container_name'"
     fi
     
-    # Enable networking services
-    container_setup_networking "$mount_point"
+    # Enable networking services using container-based execution (not chroot)
+    log_info "Enabling networking services in container using modern container-based approach..."
+    if ! container_run_command "$container_name" "
+        systemctl enable systemd-networkd
+        systemctl enable systemd-resolved
+    "; then
+        log_warn "Failed to enable networking services in container"
+    fi
     
-    log_info "Container '$container_name' created and prepared"
+    # Install packages using container-based execution (not chroot)
+    if [[ -n "$install_packages" ]]; then
+        log_info "Installing packages in container using modern container-based approach: $install_packages"
+        container_install_packages_in_running "$container_name" "$install_packages"
+    fi
 }
 
 # Start a container
@@ -364,7 +379,7 @@ container_destroy() {
 # CONTAINER PACKAGE MANAGEMENT
 # ==============================================================================
 
-# Install packages in a container chroot
+# Install packages in a container chroot (legacy method)
 # Usage: container_install_packages "mount-point" "package1,package2,..."
 container_install_packages() {
     local mount_point="$1"
@@ -385,6 +400,29 @@ container_install_packages() {
     fi
     
     log_debug "Successfully installed packages: $package_list"
+}
+
+# Install packages in a running container (modern method)
+# Usage: container_install_packages_in_running "container-name" "package1,package2,..."
+container_install_packages_in_running() {
+    local container_name="$1"
+    local packages="$2"
+    
+    log_info "Installing packages in running container '$container_name': $packages"
+    
+    # Convert comma-separated list to space-separated
+    local package_list
+    package_list=$(echo "$packages" | tr ',' ' ')
+    
+    if ! container_run_command "$container_name" "
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -q
+        apt-get install -y -q $package_list
+    "; then
+        die "Failed to install packages in container: $package_list"
+    fi
+    
+    log_debug "Successfully installed packages in container: $package_list"
 }
 
 # ==============================================================================
@@ -417,10 +455,10 @@ container_start_networking() {
     log_info "Starting networking services in container..."
     
     # Start networking services (non-fatal if they fail)
-    run_cmd systemd-run --machine="$container_name" --wait systemctl start systemd-networkd || \
+    container_run_command "$container_name" "systemctl start systemd-networkd" || \
         log_warn "Failed to start systemd-networkd"
     
-    run_cmd systemd-run --machine="$container_name" --wait systemctl start systemd-resolved || \
+    container_run_command "$container_name" "systemctl start systemd-resolved" || \
         log_warn "Failed to start systemd-resolved"
     
     log_debug "Networking services started"
@@ -430,7 +468,22 @@ container_start_networking() {
 # CONTAINER COMMAND EXECUTION
 # ==============================================================================
 
-# Execute a command in a running container
+# Execute a command in a running container using systemd-run
+# Usage: container_run_command "container-name" "command-string"
+container_run_command() {
+    local container_name="$1"
+    local command="$2"
+    
+    log_debug "Executing in container '$container_name': $command"
+    
+    if ! container_is_running "$container_name"; then
+        die "Container '$container_name' is not running"
+    fi
+    
+    run_cmd systemd-run --machine="$container_name" --wait bash -c "$command"
+}
+
+# Execute a command in a running container (legacy interface for compatibility)
 # Usage: container_exec "container-name" "command" [args...]
 container_exec() {
     local container_name="$1"
