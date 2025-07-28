@@ -14,7 +14,7 @@ set -o nounset 2>/dev/null || true
 setup() {
     # Create test environment variables
     export TEST_BUILD_NAME="test-build"
-    export TEST_RECOVERY_DIR="/tmp/test-recovery"
+    export TEST_RECOVERY_DIR="/tmp/test-recovery-$$"  # Use PID for unique directory
     export TEST_STATE_FILE="$TEST_RECOVERY_DIR/test-state"
     
     # Mock dry run mode by default for safety
@@ -23,22 +23,24 @@ setup() {
     # Create test recovery directory
     mkdir -p "$TEST_RECOVERY_DIR"
     
-    # Clear cleanup and rollback stacks
+    # Clear cleanup and rollback stacks (ignore errors)
     clear_cleanup_stack 2>/dev/null || true
     clear_rollback_stack 2>/dev/null || true
+    
+    # Ensure no traps interfere with tests
+    trap - EXIT ERR 2>/dev/null || true
 }
 
 teardown() {
-    # Clean up test files
-    rm -rf "$TEST_RECOVERY_DIR"
+    # Minimal teardown to avoid hanging
+    rm -rf "$TEST_RECOVERY_DIR" 2>/dev/null &
+    wait 2>/dev/null || true
     
-    # Reset environment
-    unset TEST_BUILD_NAME TEST_RECOVERY_DIR TEST_STATE_FILE
-    unset DRY_RUN
+    # Reset critical variables only
+    export DRY_RUN=true 2>/dev/null || true
     
-    # Clear stacks
-    clear_cleanup_stack 2>/dev/null || true
-    clear_rollback_stack 2>/dev/null || true
+    # Clear traps aggressively
+    trap - EXIT ERR INT TERM 2>/dev/null || true
 }
 
 # ==============================================================================
@@ -182,23 +184,46 @@ teardown() {
 }
 
 @test "setup_cleanup_trap: configures exit trap" {
+    # Save current traps to restore later
+    local old_exit_trap=$(trap -p EXIT)
+    local old_err_trap=$(trap -p ERR)
+    
     run setup_cleanup_trap
     
     assert_success
     # Trap setup should succeed - debug messages are internal
+    
+    # Clean up traps to avoid interfering with other tests
+    trap - EXIT ERR
+    # Restore original traps if they existed
+    if [[ -n "$old_exit_trap" ]]; then eval "$old_exit_trap"; fi
+    if [[ -n "$old_err_trap" ]]; then eval "$old_err_trap"; fi
 }
 
 @test "disable_cleanup_trap: removes exit trap" {
+    # Save current traps to restore later
+    local old_exit_trap=$(trap -p EXIT)
+    local old_err_trap=$(trap -p ERR)
+    
+    # Set up traps first
+    setup_cleanup_trap
+    
     run disable_cleanup_trap
     
     assert_success
     # Trap disable should succeed - debug messages are internal
+    
+    # Ensure traps are cleaned up
+    trap - EXIT ERR
+    # Restore original traps if they existed
+    if [[ -n "$old_exit_trap" ]]; then eval "$old_exit_trap"; fi
+    if [[ -n "$old_err_trap" ]]; then eval "$old_err_trap"; fi
 }
 
 @test "emergency_cleanup: runs cleanup with error context" {
     export DRY_RUN=false
     
-    # Add cleanup command
+    # Save state and add cleanup command
     add_cleanup "echo 'emergency cleanup'" >/dev/null
     
     run emergency_cleanup "Test error message"
@@ -206,22 +231,25 @@ teardown() {
     assert_success
     assert_output --partial "EMERGENCY CLEANUP: Test error message"
     assert_output --partial "Running cleanup stack"
+    
+    # Clean up the cleanup stack to avoid affecting other tests
+    clear_cleanup_stack >/dev/null
 }
 
 @test "emergency_cleanup: handles cleanup stack failure gracefully" {
     export DRY_RUN=false
     
-    # Add failing cleanup command
+    # Add a failing cleanup command that will actually fail
     add_cleanup "false" >/dev/null
-    
-    # Mock run_cmd to fail
-    run_cmd() { return 1; }
     
     run emergency_cleanup "Test error"
     
     assert_success
     assert_output --partial "EMERGENCY CLEANUP: Test error"
     assert_output --partial "Emergency cleanup completed with errors"
+    
+    # Clean up the cleanup stack to avoid affecting other tests
+    clear_cleanup_stack >/dev/null
 }
 
 # ==============================================================================

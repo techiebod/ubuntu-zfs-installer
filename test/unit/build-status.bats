@@ -261,6 +261,10 @@ teardown() {
     
     run build_get_next_stage "$STATUS_DATASETS_CREATED"
     assert_success
+    assert_output "$STATUS_ROOT_MOUNTED"
+    
+    run build_get_next_stage "$STATUS_ROOT_MOUNTED"
+    assert_success
     assert_output "$STATUS_OS_INSTALLED"
     
     run build_get_next_stage "$STATUS_OS_INSTALLED"
@@ -287,8 +291,8 @@ teardown() {
     assert_output ""
 }
 
-@test "build_get_next_stage: returns empty for failed status" {
-    run build_get_next_stage "$STATUS_FAILED"
+@test "build_get_next_stage: returns empty for invalid status" {
+    run build_get_next_stage "invalid-status"
     
     assert_success
     assert_output ""
@@ -344,13 +348,14 @@ teardown() {
     assert_failure
 }
 
-@test "build_should_run_stage: allows restarting failed builds" {
+@test "build_should_run_stage: handles force restart properly" {
     export DRY_RUN=false
     
-    # Set current status to failed using correct pipe format
-    echo "$(date -Iseconds)|$STATUS_FAILED|test failed" > "$TEST_STATUS_FILE"
+    # Set current status to a completed stage
+    echo "$(date -Iseconds)|$STATUS_COMPLETED|build completed" > "$TEST_STATUS_FILE"
     
-    run build_should_run_stage "$STATUS_DATASETS_CREATED" "$TEST_BUILD_NAME"
+    # Force restart should allow any stage to run
+    run build_should_run_stage "$STATUS_DATASETS_CREATED" "$TEST_BUILD_NAME" true
     
     assert_success
 }

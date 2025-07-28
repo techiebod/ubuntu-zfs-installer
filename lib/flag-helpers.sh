@@ -39,6 +39,7 @@ process_common_flags() {
     
     # Override LOG_LEVEL to DEBUG when debug flag is enabled
     if [[ "$DEBUG" == "true" ]]; then
+        # shellcheck disable=SC2034  # LOG_LEVEL is used by logging system
         LOG_LEVEL="DEBUG"
     fi
 }

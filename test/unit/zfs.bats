@@ -136,6 +136,8 @@ teardown() {
 }
 
 @test "zfs_mount_dataset: validates dataset exists before mounting" {
+    export DRY_RUN=false
+    
     # Mock zfs_dataset_exists to return false
     zfs_dataset_exists() { return 1; }
     

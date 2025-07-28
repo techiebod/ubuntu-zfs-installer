@@ -91,9 +91,14 @@ run_cleanup_stack() {
     fi
     
     log_info "Running cleanup stack"
-    local i
-    for ((i=${#CLEANUP_STACK[@]}-1; i>=0; i--)); do
-        local cleanup_cmd="${CLEANUP_STACK[i]}"
+    
+    # Make a copy of the cleanup stack and clear the original to prevent infinite loops
+    local cleanup_commands=("${CLEANUP_STACK[@]}")
+    CLEANUP_STACK=()
+    
+    local idx
+    for ((idx=${#cleanup_commands[@]}-1; idx>=0; idx--)); do
+        local cleanup_cmd="${cleanup_commands[idx]}"
         log_debug "Executing cleanup: $cleanup_cmd"
         if declare -f "$cleanup_cmd" >/dev/null; then
             # It's a function
@@ -107,7 +112,7 @@ run_cleanup_stack() {
             fi
         fi
     done
-    CLEANUP_STACK=()
+    
     log_info "✅ Cleanup completed"
     
     # For cleanup, we always return success even if some commands failed
