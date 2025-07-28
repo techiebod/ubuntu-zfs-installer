@@ -50,6 +50,38 @@ declare -gAx STATUS_PROGRESSION=(
 )
 
 # ==============================================================================
+# STAGE CONSTANTS
+# ==============================================================================
+
+# Stage function names in execution order
+readonly STAGE_1_CREATE_DATASETS="stage_1_create_datasets"
+readonly STAGE_2_INSTALL_OS="stage_2_install_os"
+readonly STAGE_3_MOUNT_VARLOG="stage_3_mount_varlog"
+readonly STAGE_4_CREATE_CONTAINER="stage_4_create_container"
+readonly STAGE_5_CONFIGURE_ANSIBLE="stage_5_configure_ansible"
+readonly STAGE_6_FINALIZE_BUILD="stage_6_finalize_build"
+
+# All stage functions in execution order
+readonly STAGE_FUNCTIONS=(
+    "$STAGE_1_CREATE_DATASETS"
+    "$STAGE_2_INSTALL_OS"
+    "$STAGE_3_MOUNT_VARLOG"
+    "$STAGE_4_CREATE_CONTAINER"
+    "$STAGE_5_CONFIGURE_ANSIBLE"
+    "$STAGE_6_FINALIZE_BUILD"
+)
+
+# Map statuses to their corresponding stage functions
+declare -gAx STATUS_TO_STAGE=(
+    ["$STATUS_STARTED"]="$STAGE_1_CREATE_DATASETS"
+    ["$STATUS_DATASETS_CREATED"]="$STAGE_2_INSTALL_OS"
+    ["$STATUS_OS_INSTALLED"]="$STAGE_3_MOUNT_VARLOG"
+    ["$STATUS_VARLOG_MOUNTED"]="$STAGE_4_CREATE_CONTAINER"
+    ["$STATUS_CONTAINER_CREATED"]="$STAGE_5_CONFIGURE_ANSIBLE"
+    ["$STATUS_ANSIBLE_CONFIGURED"]="$STAGE_6_FINALIZE_BUILD"
+)
+
+# ==============================================================================
 # SNAPSHOT CONSTANTS
 # ==============================================================================
 

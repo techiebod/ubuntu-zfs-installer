@@ -205,33 +205,234 @@ check_build_status() {
     "$script_dir/manage-build-status.sh" get "$BUILD_NAME" 2>/dev/null || echo ""
 }
 
-# Determine which stage to start from based on current build status
-get_starting_stage() {
+# Check if build is already completed
+is_build_completed() {
+    local current_status
+    current_status=$(check_build_status)
+    [[ "$current_status" == "completed" ]]
+}
+
+# Get the next stage that should run based on current build status
+get_next_stage_to_run() {
     local current_status
     current_status=$(check_build_status)
     
-    # Handle special cases first
-    case "$current_status" in
-        "") echo 1; return 0 ;;  # No status = start from stage 1
-        "failed") echo 1; return 0 ;;  # Failed builds restart from beginning
-        "completed") echo 7; return 0 ;;  # All done
-    esac
+    # Handle empty/no status - start with first stage
+    if [[ -z "$current_status" ]]; then
+        echo "$STAGE_1_CREATE_DATASETS"
+        return 0
+    fi
     
-    # Find the status in the VALID_STATUSES array and return next stage
-    for i in "${!VALID_STATUSES[@]}"; do
-        if [[ "${VALID_STATUSES[$i]}" == "$current_status" ]]; then
-            # Return the next stage number (array index + 1)
-            echo $((i + 1))
-            return 0
-        fi
-    done
+    # If already completed, return completed
+    if [[ "$current_status" == "$STATUS_COMPLETED" ]]; then
+        echo "completed"
+        return 0
+    fi
     
-    # Unknown status = restart from beginning
-    echo 1
+    # Use the mapping from constants.sh
+    local stage="${STATUS_TO_STAGE[$current_status]:-$STAGE_1_CREATE_DATASETS}"
+    echo "$stage"
 }
 
 clear_build_status() {
     run_cmd "$script_dir/manage-build-status.sh" clear "$BUILD_NAME"
+}
+
+# ==============================================================================
+# STAGE IMPLEMENTATION FUNCTIONS
+# ==============================================================================
+
+# Get step number for a stage function
+get_stage_step_number() {
+    local stage_function="$1"
+    for i in "${!STAGE_FUNCTIONS[@]}"; do
+        if [[ "${STAGE_FUNCTIONS[$i]}" == "$stage_function" ]]; then
+            echo $((i + 1))  # 1-based indexing for display
+            return 0
+        fi
+    done
+    echo "?"  # Unknown stage
+}
+
+# Stage 1: Create ZFS Datasets
+stage_1_create_datasets() {
+    local step_num
+    step_num=$(get_stage_step_number "$STAGE_1_CREATE_DATASETS")
+    log_step "$step_num" "Creating ZFS root dataset"
+    log_build_event "Starting Stage $step_num: Creating ZFS datasets for distribution $DISTRIBUTION $DIST_VERSION"
+    
+    # Create datasets without cleanup flag - let it fail cleanly if they exist
+    local dataset_args=("--pool" "$POOL_NAME" "create" "$BUILD_NAME")
+    
+    if ! invoke_script "manage-root-datasets.sh" "${dataset_args[@]}"; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_info "Dataset creation would have failed (likely already exists) - continuing dry run"
+        else
+            log_error "Failed to create ZFS datasets. Check the error above for details."
+            log_info "If the dataset already exists, you can:"
+            log_info "  1. Clear the build status: scripts/manage-build-status.sh clear $BUILD_NAME"
+            log_info "  2. Or manually clean up with: scripts/manage-root-datasets.sh --cleanup destroy $BUILD_NAME"
+            return 1
+        fi
+    fi
+    
+    set_build_status "$STATUS_DATASETS_CREATED"
+    log_build_event "Completed Stage $step_num: ZFS datasets created successfully"
+    take_snapshot "1-datasets-created"
+}
+
+# Stage 2: Install Operating System
+stage_2_install_os() {
+    local step_num
+    step_num=$(get_stage_step_number "$STAGE_2_INSTALL_OS")
+    log_step "$step_num" "Installing OS to root dataset"
+    log_build_event "Starting Stage $step_num: Installing $DISTRIBUTION $DIST_VERSION to ZFS root"
+    
+    if ! invoke_script "install-root-os.sh" "$BUILD_NAME"; then
+        log_error "Failed to install operating system to root dataset"
+        return 1
+    fi
+    
+    set_build_status "$STATUS_OS_INSTALLED"
+    log_build_event "Completed Stage $step_num: Operating system installed successfully"
+    take_snapshot "2-os-installed"
+}
+
+# Stage 3: Mount Varlog Dataset
+stage_3_mount_varlog() {
+    local step_num
+    step_num=$(get_stage_step_number "$STAGE_3_MOUNT_VARLOG")
+    log_step "$step_num" "Mounting varlog dataset"
+    log_build_event "Starting Stage $step_num: Mounting varlog dataset for persistent logging"
+    
+    if ! invoke_script "manage-root-datasets.sh" "--pool" "$POOL_NAME" "mount-varlog" "$BUILD_NAME"; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_info "Varlog mount would have failed (dataset doesn't exist) - continuing dry run"
+        else
+            log_error "Failed to mount varlog dataset. Check the error above for details."
+            return 1
+        fi
+    fi
+    
+    set_build_status "$STATUS_VARLOG_MOUNTED"
+    log_build_event "Completed Stage $step_num: Varlog dataset mounted successfully"
+    take_snapshot "3-varlog-mounted"
+}
+
+# Stage 4: Create and Prepare Container
+stage_4_create_container() {
+    local step_num
+    step_num=$(get_stage_step_number "$STAGE_4_CREATE_CONTAINER")
+    log_step "$step_num" "Creating container for Ansible execution"
+    log_build_event "Starting Stage $step_num: Creating systemd-nspawn container '$HOSTNAME' for configuration"
+    
+    local container_name="$BUILD_NAME"
+    if ! invoke_script "manage-root-containers.sh" "create" "--pool" "$POOL_NAME" "--name" "$container_name" "--hostname" "$HOSTNAME" "--install-packages" "ansible,python3-apt" "$BUILD_NAME"; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_info "Container creation would have failed (dataset doesn't exist) - continuing dry run"
+        else
+            log_error "Failed to create container. Check the error above for details."
+            return 1
+        fi
+    else
+        # Start the container
+        if ! invoke_script "manage-root-containers.sh" "start" "--name" "$container_name" "$BUILD_NAME"; then
+            if [[ "$DRY_RUN" == "true" ]]; then
+                log_info "Container start would have failed - continuing dry run"
+            else
+                log_error "Failed to start container. Check the error above for details."
+                return 1
+            fi
+        fi
+    fi
+    
+    set_build_status "$STATUS_CONTAINER_CREATED"
+    log_build_event "Completed Stage $step_num: Container created and started successfully"
+    take_snapshot "4-container-created"
+}
+
+# Stage 5: Configure System with Ansible
+stage_5_configure_ansible() {
+    local step_num
+    step_num=$(get_stage_step_number "$STAGE_5_CONFIGURE_ANSIBLE")
+    log_step "$step_num" "Configuring system with Ansible"
+    log_build_event "Starting Stage $step_num: Running Ansible configuration with tags='$ANSIBLE_TAGS' limit='$ANSIBLE_LIMIT'"
+    
+    # Ensure container is running before executing Ansible commands
+    local container_name="$BUILD_NAME"
+    log_info "Ensuring container '$container_name' is running..."
+    if ! "$script_dir/manage-root-containers.sh" list 2>/dev/null | grep -q "$container_name"; then
+        log_info "Starting container '$container_name'..."
+        run_cmd "$script_dir/manage-root-containers.sh" start --name "$container_name" "$BUILD_NAME"
+    else
+        log_debug "Container '$container_name' is already running"
+    fi
+    
+    local ansible_args=(
+        "--pool" "$POOL_NAME"
+        "--limit" "$ANSIBLE_LIMIT"
+        "$BUILD_NAME"
+        "$HOSTNAME"
+    )
+    [[ -n "$ANSIBLE_TAGS" ]] && ansible_args+=("--tags" "$ANSIBLE_TAGS")
+    add_common_flags ansible_args
+
+    if ! run_cmd "$script_dir/configure-root-os.sh" "${ansible_args[@]}"; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_info "Ansible configuration would have failed - continuing dry run"
+        else
+            log_error "Failed to configure system with Ansible. Check the error above for details."
+            return 1
+        fi
+    fi
+    
+    set_build_status "$STATUS_ANSIBLE_CONFIGURED"
+    log_build_event "Completed Stage $step_num: Ansible configuration completed successfully"
+    take_snapshot "5-ansible-configured"
+}
+
+# Stage 6: Cleanup and Complete
+stage_6_finalize_build() {
+    local step_num
+    step_num=$(get_stage_step_number "$STAGE_6_FINALIZE_BUILD")
+    log_step "$step_num" "Finalizing build"
+    log_build_event "Starting Stage $step_num: Finalizing build and cleaning up resources"
+    
+    # Stop and destroy the container
+    local container_name="$BUILD_NAME"
+    if ! invoke_script "manage-root-containers.sh" "destroy" "--name" "$container_name" "$BUILD_NAME"; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_info "Container destruction would have failed - continuing dry run"
+        else
+            log_warning "Failed to destroy container - may need manual cleanup"
+        fi
+    fi
+    
+    # Clear the cleanup trap since we're doing it manually
+    trap - EXIT
+    
+    set_build_status "$STATUS_COMPLETED"
+    log_build_event "Completed Stage $step_num: Build finished successfully - ready for deployment"
+    take_snapshot "6-completed"
+}
+
+# Execute a specific stage by name
+execute_stage() {
+    local stage_name="$1"
+    
+    case "$stage_name" in
+        "stage_1_create_datasets")   stage_1_create_datasets ;;
+        "stage_2_install_os")        stage_2_install_os ;;
+        "stage_3_mount_varlog")      stage_3_mount_varlog ;;
+        "stage_4_create_container")  stage_4_create_container ;;
+        "stage_5_configure_ansible") stage_5_configure_ansible ;;
+        "stage_6_finalize_build")    stage_6_finalize_build ;;
+        "completed")                 return 0 ;;  # Nothing to do
+        *)
+            log_error "Unknown stage: $stage_name"
+            return 1
+            ;;
+    esac
 }
 
 # --- Main Build Logic ---
@@ -285,220 +486,53 @@ main() {
     local current_status
     current_status=$(check_build_status)
     if [[ -n "$current_status" ]]; then
-        log_info "Current build status: $current_status - resuming from this point"
+        log_info "Current build status: $current_status - checking which stages need to run"
     fi
 
     # Set initial status if none exists
     if [[ -z "$current_status" ]]; then
-        set_build_status "started"
+        set_build_status "$STATUS_STARTED"
     fi
 
-    # Determine which stage to start from
-    local start_stage
-    start_stage=$(get_starting_stage)
-    
-    if [[ $start_stage -gt 6 ]]; then
+    # Check if build is already completed
+    current_status=$(check_build_status)
+    if [[ "$current_status" == "$STATUS_COMPLETED" ]]; then
         log_info "Build '$BUILD_NAME' is already completed!"
         local final_mountpoint="${DEFAULT_MOUNT_BASE}/${BUILD_NAME}"
         log_info "The root filesystem is available at: $final_mountpoint"
         return 0
     fi
 
-    # Execute stages from start_stage to completion
-    # --- STAGE 1: Create ZFS Datasets ---
-    if [[ $start_stage -le 1 ]]; then
-        log_step 1 6 "Creating ZFS root dataset"
-        log_build_event "Starting Stage 1: Creating ZFS datasets for distribution $DISTRIBUTION $DIST_VERSION"
+    # Execute stages sequentially until completion
+    while true; do
+        local next_stage
+        next_stage=$(get_next_stage_to_run)
         
-        # Create datasets without cleanup flag - let it fail cleanly if they exist
-        local dataset_args=("--pool" "$POOL_NAME" "create" "$BUILD_NAME")
+        if [[ "$next_stage" == "completed" ]]; then
+            log_info "All stages completed successfully!"
+            break
+        fi
         
-        if ! invoke_script "manage-root-datasets.sh" "${dataset_args[@]}"; then
+        log_debug "Executing next stage: $next_stage"
+        if ! execute_stage "$next_stage"; then
             if [[ "$DRY_RUN" == "true" ]]; then
-                log_info "Dataset creation would have failed (likely already exists) - continuing dry run"
+                log_info "Stage would have failed in real run - continuing dry run"
             else
-                log_error "Failed to create ZFS datasets. Check the error above for details."
-                log_info "If the dataset already exists, you can:"
-                log_info "  1. Clear the build status: scripts/manage-build-status.sh clear $BUILD_NAME"
-                log_info "  2. Or manually clean up with: scripts/manage-root-datasets.sh --cleanup destroy $BUILD_NAME"
+                log_error "Stage $next_stage failed"
+                set_build_status "$STATUS_FAILED"
                 exit 1
             fi
-        else
-            set_build_status "datasets-created"
-            log_build_event "Completed Stage 1: ZFS datasets created successfully"
-            take_snapshot "1-datasets-created"
-        fi
-    else
-        log_info "📋 Step 1/6: ZFS dataset creation (already completed)"
-    fi
-
-    # --- STAGE 2: Install Base OS ---
-    if [[ $start_stage -le 2 ]]; then
-        log_step 2 6 "Installing base operating system"
-        log_build_event "Starting Stage 2: Installing $DISTRIBUTION $DIST_VERSION base OS on $ARCH architecture"
-        
-        # If we're rerunning Stage 2 after a previous failure (i.e., we have an existing status file
-        # and datasets already exist but OS install failed), roll back to the clean state from Stage 1
-        # Skip this rollback logic in dry-run mode since we're simulating a fresh run
-        if [[ "$DRY_RUN" != "true" ]]; then
-            local actual_status
-            actual_status=$("$script_dir/manage-build-status.sh" get "$BUILD_NAME" 2>/dev/null || echo "")
-            if [[ "$actual_status" == "datasets-created" ]]; then
-                log_build_warn "Rolling back to clean state before OS installation"
-                invoke_script "manage-root-snapshots.sh" "--pool" "$POOL_NAME" "rollback" "$BUILD_NAME" "build-stage-1-datasets-created"
-                
-                if [[ $? -eq 0 ]]; then
-                    log_build_info "Successfully rolled back to stage 1 snapshot"
-                else
-                    log_build_warn "Failed to rollback to stage 1 snapshot, proceeding with current state"
-                fi
-            fi
         fi
         
-        local os_install_args=(
-            "--pool" "$POOL_NAME"
-            "--arch" "$ARCH"
-            "--distribution" "$DISTRIBUTION"
-            "--version" "$DIST_VERSION"
-            "--codename" "$DIST_CODENAME"
-            "$BUILD_NAME"
-        )
-        [[ -n "$INSTALL_PROFILE" ]] && os_install_args+=("--profile" "$INSTALL_PROFILE")
-        add_common_flags os_install_args
-
-        if ! run_cmd "$script_dir/install-root-os.sh" "${os_install_args[@]}"; then
-            if [[ "$DRY_RUN" == "true" ]]; then
-                log_info "OS installation would have failed (mount point validation) - continuing dry run"
-            else
-                log_error "Failed to install base OS. Check the error above for details."
-                exit 1
-            fi
-        else
-            set_build_status "os-installed"
-            log_build_event "Completed Stage 2: Base OS installation finished successfully"
-            take_snapshot "2-os-installed"
+        # Safety check to prevent infinite loops
+        local new_status
+        new_status=$(check_build_status)
+        if [[ "$new_status" == "$current_status" ]]; then
+            log_error "Stage completed but status didn't change. This indicates a bug."
+            exit 1
         fi
-    else
-        log_info "📋 Step 2/6: Base OS installation (already completed)"
-    fi
-
-    # --- STAGE 3: Mount Varlog Dataset ---
-    if [[ $start_stage -le 3 ]]; then
-        log_step 3 6 "Mounting varlog dataset"
-        log_build_event "Starting Stage 3: Mounting varlog dataset for persistent logging"
-        
-        if ! invoke_script "manage-root-datasets.sh" "--pool" "$POOL_NAME" "mount-varlog" "$BUILD_NAME"; then
-            if [[ "$DRY_RUN" == "true" ]]; then
-                log_info "Varlog mount would have failed (dataset doesn't exist) - continuing dry run"
-            else
-                log_error "Failed to mount varlog dataset. Check the error above for details."
-                exit 1
-            fi
-        else
-            set_build_status "varlog-mounted"
-            log_build_event "Completed Stage 3: Varlog dataset mounted successfully"
-            take_snapshot "3-varlog-mounted"
-        fi
-    else
-        log_info "📋 Step 3/6: Varlog mount (already completed)"
-    fi
-
-    # --- STAGE 4: Create and Prepare Container ---
-    if [[ $start_stage -le 4 ]]; then
-        log_step 4 6 "Creating container for Ansible execution"
-        log_build_event "Starting Stage 4: Creating systemd-nspawn container '$HOSTNAME' for configuration"
-        
-        local container_name="$BUILD_NAME"
-        if ! invoke_script "manage-root-containers.sh" "create" "--pool" "$POOL_NAME" "--name" "$container_name" "--hostname" "$HOSTNAME" "--install-packages" "ansible,python3-apt" "$BUILD_NAME"; then
-            if [[ "$DRY_RUN" == "true" ]]; then
-                log_info "Container creation would have failed (dataset doesn't exist) - continuing dry run"
-            else
-                log_error "Failed to create container. Check the error above for details."
-                exit 1
-            fi
-        else
-            # Start the container
-            if ! invoke_script "manage-root-containers.sh" "start" "--name" "$container_name" "$BUILD_NAME"; then
-                if [[ "$DRY_RUN" == "true" ]]; then
-                    log_info "Container start would have failed - continuing dry run"
-                else
-                    log_error "Failed to start container. Check the error above for details."
-                    exit 1
-                fi
-            else
-                set_build_status "container-created"
-                log_build_event "Completed Stage 4: Container created and started successfully"
-                take_snapshot "4-container-created"
-            fi
-        fi
-    else
-        log_info "📋 Step 4/6: Container creation (already completed)"
-    fi
-
-    # --- STAGE 5: Configure System with Ansible ---
-    if [[ $start_stage -le 5 ]]; then
-        log_step 5 6 "Configuring system with Ansible"
-        log_build_event "Starting Stage 5: Running Ansible configuration with tags='$ANSIBLE_TAGS' limit='$ANSIBLE_LIMIT'"
-        
-        # Ensure container is running before executing Ansible commands
-        local container_name="$BUILD_NAME"
-        log_info "Ensuring container '$container_name' is running..."
-        if ! "$script_dir/manage-root-containers.sh" list 2>/dev/null | grep -q "$container_name"; then
-            log_info "Starting container '$container_name'..."
-            run_cmd "$script_dir/manage-root-containers.sh" start --name "$container_name" "$BUILD_NAME"
-        else
-            log_debug "Container '$container_name' is already running"
-        fi
-        
-        local ansible_args=(
-            "--pool" "$POOL_NAME"
-            "--limit" "$ANSIBLE_LIMIT"
-            "$BUILD_NAME"
-            "$HOSTNAME"
-        )
-        [[ -n "$ANSIBLE_TAGS" ]] && ansible_args+=("--tags" "$ANSIBLE_TAGS")
-        add_common_flags ansible_args
-
-        if ! run_cmd "$script_dir/configure-root-os.sh" "${ansible_args[@]}"; then
-            if [[ "$DRY_RUN" == "true" ]]; then
-                log_info "Ansible configuration would have failed - continuing dry run"
-            else
-                log_error "Failed to configure system with Ansible. Check the error above for details."
-                exit 1
-            fi
-        else
-            set_build_status "ansible-configured"
-            log_build_event "Completed Stage 5: Ansible configuration completed successfully"
-            take_snapshot "5-ansible-configured"
-        fi
-    else
-        log_info "📋 Step 5/6: Ansible configuration (already completed)"
-    fi
-
-    # --- STAGE 6: Cleanup and Complete ---
-    if [[ $start_stage -le 6 ]]; then
-        log_step 6 6 "Finalizing build"
-        log_build_event "Starting Stage 6: Finalizing build and cleaning up resources"
-        
-        # Stop and destroy the container
-        local container_name="$BUILD_NAME"
-        if ! invoke_script "manage-root-containers.sh" "destroy" "--name" "$container_name" "$BUILD_NAME"; then
-            if [[ "$DRY_RUN" == "true" ]]; then
-                log_info "Container destruction would have failed - continuing dry run"
-            else
-                log_warning "Failed to destroy container - may need manual cleanup"
-            fi
-        fi
-        
-        # Clear the cleanup trap since we're doing it manually
-        trap - EXIT
-        
-        set_build_status "completed"
-        log_build_event "Completed Stage 6: Build finished successfully - ready for deployment"
-        take_snapshot "6-completed"
-    else
-        log_info "📋 Step 6/6: Build finalization (already completed)"
-    fi
+        current_status="$new_status"
+    done
 
     # --- Build Complete ---
     local final_mountpoint="${DEFAULT_MOUNT_BASE}/${BUILD_NAME}"

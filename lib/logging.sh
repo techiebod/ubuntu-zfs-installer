@@ -255,8 +255,11 @@ log_validation_end() {
 # Log with step numbers for complex operations (both console and file)
 log_step() {
     local step_num="$1"
-    local total_steps="$2"
-    shift 2
+    shift 1
+    
+    # Derive total steps from the STAGE_FUNCTIONS array
+    local total_steps="${#STAGE_FUNCTIONS[@]}"
+    
     log_build_info "📋 Step $step_num/$total_steps: $*"
 }
 
