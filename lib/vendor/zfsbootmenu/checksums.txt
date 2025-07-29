@@ -1,0 +1,71 @@
+# ZFSBootMenu SHA256 -> version index
+# Generated on: 2025-07-29
+# Format: <sha256> <version> <filename>
+# This database allows determination of installed ZFSBootMenu version by checksum matching
+3d4c55147964fdbc2b0042535d9ee117dc51bee82af045040d26ae9dfb9bdf0d v3.0.1 zfsbootmenu-recovery-x86_64-v3.0.1-linux6.1.EFI
+12c58aa2565c8bffd24f0d88925bea9368ac706da02fe80de5dacff113ec9035 v3.0.1 zfsbootmenu-recovery-x86_64-v3.0.1-linux6.1.tar.gz
+375ef1a0505bbbd648572c16d83884d5147fa2435508b4717e2749aead676143 v3.0.1 zfsbootmenu-recovery-x86_64-v3.0.1-linux6.12.EFI
+fcd610d2fcf09b1210c783425bf7117d940234dbb8e0a930fb671db2249de484 v3.0.1 zfsbootmenu-recovery-x86_64-v3.0.1-linux6.12.tar.gz
+7a07b74ec3f2016e8ec9a0da0534e37a55e7a17fc7a61be2ce33bbbf8fc7804c v3.0.1 zfsbootmenu-recovery-x86_64-v3.0.1-linux6.6.EFI
+93379cfa4b12969b12f0a9e4a76279a9c1658beaa9013772202e61a28569fa51 v3.0.1 zfsbootmenu-recovery-x86_64-v3.0.1-linux6.6.tar.gz
+0de09312abeb8bbc030f062514238efbb5ac29f603dbbb6a9299d878f4c53976 v3.0.1 zfsbootmenu-release-x86_64-v3.0.1-linux6.1.EFI
+c10a05fd7f34718696d45375d0fb6476a4b5ee134e59d797d7d2988699cdda3b v3.0.1 zfsbootmenu-release-x86_64-v3.0.1-linux6.1.tar.gz
+9fb77575cba8d6ee86e6389ada739bb0f26ae9e59aa350b26a92e5490c53dca3 v3.0.1 zfsbootmenu-release-x86_64-v3.0.1-linux6.12.EFI
+ccee3cd1a61de44352e3f6ff9168a29ff887f05466c4fb55920578c4695f4509 v3.0.1 zfsbootmenu-release-x86_64-v3.0.1-linux6.12.tar.gz
+5f126d9e1b18ecf288044c46d1a64ef51bb0b00c296d55d46196d9cf81ef81da v3.0.1 zfsbootmenu-release-x86_64-v3.0.1-linux6.6.EFI
+a67f57ff2ef10e831cc385af6b1cdc65336013f6f95c2944b63fc3df7ae5ed7f v3.0.1 zfsbootmenu-release-x86_64-v3.0.1-linux6.6.tar.gz
+8a9d11989f43f6b359f6933fd18b08c8748e84e36da5f61837f7d96a39af1100 v3.0.0 zfsbootmenu-recovery-x86_64-v3.0.0-6.1.127_1.tar.gz
+4a9c7e39cd554bbff0b62ab2711001d65715da6f994956c82cc814b4e23e358c v3.0.0 zfsbootmenu-recovery-x86_64-v3.0.0-6.12.11_1.tar.gz
+c223c722b2c508525b447a1bf842a5e0dc27fe757fcba5fea24000590adc77b4 v3.0.0 zfsbootmenu-recovery-x86_64-v3.0.0-6.6.74_1.tar.gz
+135d85875f709dad2e578c5c4a2f5fc144a0d47417ac93707cfcf4417ebb78f3 v3.0.0 zfsbootmenu-recovery-x86_64-v3.0.0-vmlinuz-6.1.127_1.EFI
+751f4562ebaba91b81243d4af7725749a60ed781b8e5db996c1203048f5ab6bd v3.0.0 zfsbootmenu-recovery-x86_64-v3.0.0-vmlinuz-6.12.11_1.EFI
+022b21ae65c419cac2c4d5d6ad190b0874a25240422bb9c57ab6d3212b8aa9cc v3.0.0 zfsbootmenu-recovery-x86_64-v3.0.0-vmlinuz-6.6.74_1.EFI
+3b48aa39c74eba8bcdcd3592d0b7f09ab904d111f4fd20896c3601f998aacab1 v3.0.0 zfsbootmenu-release-x86_64-v3.0.0-6.1.127_1.tar.gz
+7675d1e27cc247b8b06f13be5a776c23d8f6f08b96de70d156f93f3feafee486 v3.0.0 zfsbootmenu-release-x86_64-v3.0.0-6.12.11_1.tar.gz
+5281fe62f6a2f3addef5d05ac7c23d1f0a68e699eb04be96d246fdd4beee0d56 v3.0.0 zfsbootmenu-release-x86_64-v3.0.0-6.6.74_1.tar.gz
+82a3036ebd059587d395f21a9eb96a32ffa81a3a6fe7ef46a2eee6ad11e8f9cc v3.0.0 zfsbootmenu-release-x86_64-v3.0.0-vmlinuz-6.1.127_1.EFI
+75f6e339b0a3378a84f10b2810949e472cea2a4923065996f2e0080bdf7094b9 v3.0.0 zfsbootmenu-release-x86_64-v3.0.0-vmlinuz-6.12.11_1.EFI
+a9a65484aa31b00df93b62783a23652f631ec3c99b3beb1544bf19ad4d3f4af5 v3.0.0 zfsbootmenu-release-x86_64-v3.0.0-vmlinuz-6.6.74_1.EFI
+32a92d0aebdcc067a8baaa5587c2a4c203a66f2dd3059a8215a8cedef4675ae9 v2.3.0 zbm-kcl
+196621c1d2c75ccf49c8623a50bde13af80fda4c3535b699d142a28bfb75dca0 v2.3.0 zfsbootmenu-recovery-x86_64-v2.3.0-vmlinuz.EFI
+a43b467da7a634a60b0822e371223acf025b1346119a608cff65cbb4b18a5481 v2.3.0 zfsbootmenu-recovery-x86_64-v2.3.0.tar.gz
+44580901f1bfcb67527dde12970f154354b5d6aca3f8ca472b2af5fa9f0e6175 v2.3.0 zfsbootmenu-release-x86_64-v2.3.0-vmlinuz.EFI
+17cd68cc6f55664104bf9614d5e97ee5fb1cb4e2b6f6be2fcd4ea152b743a679 v2.3.0 zfsbootmenu-release-x86_64-v2.3.0.tar.gz
+96df9e16d5aeb274a08eeb3777188b3aea59f871382df51af08e497355497eb4 v2.2.2 zbm-kcl
+7058019c736e669f6d92bfd87c1d59e1fd8e59f4913e8079778eb0713211f027 v2.2.2 zfsbootmenu-recovery-x86_64-v2.2.2-vmlinuz.EFI
+810a7170ad5e083dbf6e059f1fa18dc571a5e44bd510704bf1209d033fca197c v2.2.2 zfsbootmenu-recovery-x86_64-v2.2.2.tar.gz
+bbbf7ef0cb8e2ad13cf7bf8aacb8e0c4d6f0ab791b8b9dc0dcc51be8761203e2 v2.2.2 zfsbootmenu-release-x86_64-v2.2.2-vmlinuz.EFI
+3ccd58837d6b285567ab619a7e8b22849a9edbbed64f78ac505cac0a5f88dfa8 v2.2.2 zfsbootmenu-release-x86_64-v2.2.2.tar.gz
+3710b77d6e10962a58c05298fe677572c0f9566249960b3e20392fa918ff6138 v2.2.1 zbm-kcl
+be9d656524d9c1859232265230f7ef25bb3b6ed03e41e434817b996281840e1f v2.2.1 zfsbootmenu-recovery-x86_64-v2.2.1.tar.gz
+1d97b92c775b99d776f5c5e74a448317f811fa63894f4ed161d21fee4b6d9496 v2.2.1 zfsbootmenu-recovery-x86_64-v2.2.1-vmlinuz.EFI
+c7e4c58c10b01aa85625839875f591fd90ea0b658620b3ab2b9161a84cc70052 v2.2.1 zfsbootmenu-release-x86_64-v2.2.1.tar.gz
+66561c7bfede03d38775394afc149d13fd24a9e592703ae9ffae6123d6c77438 v2.2.1 zfsbootmenu-release-x86_64-v2.2.1-vmlinuz.EFI
+3710b77d6e10962a58c05298fe677572c0f9566249960b3e20392fa918ff6138 v2.2.0 zbm-kcl
+31ee31edc4e648ac7bcc07195928111a8962ad3f9827fdf7fd78d530616f1ee7 v2.2.0 zfsbootmenu-recovery-x86_64-v2.2.0-vmlinuz.EFI
+ea2ad834432fae4e36724cdba10e3295d36e2256744a9fd93b3d5946c897eceb v2.2.0 zfsbootmenu-recovery-x86_64-v2.2.0.tar.gz
+8fa860a58d197a8cb48c618ffda9420b0786c5d67bc66b7e02a28cd27c2fdf2c v2.2.0 zfsbootmenu-release-x86_64-v2.2.0-vmlinuz.EFI
+10a910b36e6a3fa132c20a81b9324ea64a716c8701298ce36d3c52adf38b2209 v2.2.0 zfsbootmenu-release-x86_64-v2.2.0.tar.gz
+3710b77d6e10962a58c05298fe677572c0f9566249960b3e20392fa918ff6138 v2.1.0 zbm-kcl
+8d5245c6d4e568f1320902800cce2ede36fae09d353b72ef5ca3aa9b906d3eba v2.1.0 zfsbootmenu-recovery-x86_64-v2.1.0-vmlinuz.EFI
+d631a2998ee864e09df7edb979aaa0f2c53b2bccf2dfaa5732d1074b8082cbe9 v2.1.0 zfsbootmenu-recovery-x86_64-v2.1.0.tar.gz
+df99e6acc312c5d388ec4b5a49438f71fc022c61bb031e54159236ae22ab2252 v2.1.0 zfsbootmenu-release-x86_64-v2.1.0-vmlinuz.EFI
+4b41dbb8832092bd3f7760c9bcd156d3c52148d1f0b35e25bfab37dec25accb1 v2.1.0 zfsbootmenu-release-x86_64-v2.1.0.tar.gz
+e13244739e28eb041116e636734cb64d9fd2c6b66d118ca7275441251e839d65 v2.0.0 zfsbootmenu-recovery-vmlinuz-x86_64-v2.0.0.EFI
+9cf1a7e90b2f74877b7772e2d1820ac802764d5c6bed2a2429627ee52b424cd3 v2.0.0 zfsbootmenu-recovery-x86_64-v2.0.0.tar.gz
+ce035bd5f2313b41cc7c6fcfe8f4b21293e6988bf391bbd0fd6e4b1256cb606c v2.0.0 zfsbootmenu-release-vmlinuz-x86_64-v2.0.0.EFI
+2eba485f6fe151d290d9d8c893cb38358ab319dd967872629f252085127a1d21 v2.0.0 zfsbootmenu-release-x86_64-v2.0.0.tar.gz
+9dde806cfe42b9117904c419a502e2b0ddc2ff20d3463038c119b4b3207f3f14 v1.12.0 zfsbootmenu-recovery-vmlinuz-x86_64-v1.12.0.EFI
+c4cb5227f31ea24fb20506bc5baab854b9c37d94b57312191226086c6fd6b166 v1.12.0 zfsbootmenu-recovery-x86_64-v1.12.0.tar.gz
+93c93a6268867820531a88059b3b1a1d145dd4328f392c691dd54f24f7dcdeca v1.12.0 zfsbootmenu-release-vmlinuz-x86_64-v1.12.0.EFI
+67cd4d4febb965d277665442f893653fdb2cb9a3a144627786abc0b713548b16 v1.12.0 zfsbootmenu-release-x86_64-v1.12.0.tar.gz
+87aeb3761c37c7e72deabf29f45cfc0bb1493ee91a3008c2fa61f4545bf8e9be v1.11.0 zfsbootmenu-x86_64-v1.11.0.EFI
+50a1a95fba2076dc7690c97a5a1816e119276cc80773dd70f5ef8de671bf1f51 v1.11.0 zfsbootmenu-x86_64-v1.11.0.tar.gz
+fb497cc8c656ff36e6bfe96ac01d026c7e1871e6104cf22eb3383a05a59bfc94 v1.10.1 zfsbootmenu-x86_64-v1.10.1.EFI
+5d056d888a06dd3c0b7766d9dfad731dd19789a59c9d0ec7cbeb4e9541f5e787 v1.10.1 zfsbootmenu-x86_64-v1.10.1.tar.gz
+3b828f18dc4f62bad4cb6d3ad7798f17d3fb992c64bee301028db97d2d0c5fb6 v1.10.0 zfsbootmenu-x86_64-v1.10.0.EFI
+8271d5de0abb14fc892855132ada9721df050ed9df57c934d6bc10a2ac360ce3 v1.10.0 zfsbootmenu-x86_64-v1.10.0.tar.gz
+038f0f0dc344e5b7fa377d8f22dd068e67699cd09fb90ed15420d8ebca50490f v1.9.0 zfsbootmenu-x86_64-v1.9.0.EFI
+0fac58b8f45e22a1874f56e76965e973704bb95de71ae48d973a5a62a22b21b6 v1.9.0 zfsbootmenu-x86_64-v1.9.0.tar.gz
+# No checksum file for v1.8.1
+# No checksum file for v1.8.0

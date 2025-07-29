@@ -45,3 +45,40 @@ To update to a newer version:
 The shflags library is included under the Apache License 2.0.
 Copyright 2008-2023 Kate Ward. All Rights Reserved.
 See the original license header in the shflags file and the project's NOTICE file for full attribution.
+
+## ZFSBootMenu
+
+- **Version**: 3.0.1
+- **Source**: https://github.com/zbm-dev/zfsbootmenu
+- **License**: MIT License
+- **Purpose**: Advanced boot menu for ZFS root systems
+- **Last Updated**: 2025-07-29
+- **Documentation**: See [zfsbootmenu/README.upstream.md](zfsbootmenu/README.upstream.md) for upstream documentation
+
+### Usage in Scripts
+
+```bash
+# Use vendored ZFSBootMenu tools
+ZBM_GENERATE_SCRIPT="${VENDOR_DIR}/zfsbootmenu/bin/generate-zbm"
+ZBM_SIGN_SCRIPT="${VENDOR_DIR}/zfsbootmenu/bin/zbm-sign"
+
+# Check if tools are available
+if [[ -x "$ZBM_GENERATE_SCRIPT" ]]; then
+    "$ZBM_GENERATE_SCRIPT" --version
+fi
+```
+
+### Updating ZFSBootMenu
+
+To update to a newer version:
+
+1. Run `tools/update-vendor-deps.sh zfsbootmenu`
+2. Test the updated tools with your configuration
+3. Update any integration tests if needed
+4. Commit the changes
+
+### License Compliance
+
+The ZFSBootMenu tools are included under the MIT License.
+Copyright 2020-2025 ZFSBootMenu Team. All Rights Reserved.
+See the LICENSE file in the zfsbootmenu directory for full license text.

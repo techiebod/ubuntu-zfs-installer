@@ -231,3 +231,29 @@ readonly DEFAULT_CONTAINER_TIMEOUT
 readonly DEFAULT_CONTAINER_STOP_TIMEOUT
 readonly DEFAULT_NETWORK_TIMEOUT
 readonly DEFAULT_ZFS_OPERATION_TIMEOUT
+
+# ==============================================================================
+# ZFSBOOTMENU CONSTANTS
+# ==============================================================================
+
+# ZFSBootMenu vendor directory for checksum database
+CONSTANTS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly ZBM_VENDOR_DIR="${CONSTANTS_LIB_DIR}/vendor/zfsbootmenu"
+
+# ZFSBootMenu configuration
+readonly ZBM_CONFIG_FILE="/etc/zfsbootmenu/config.yaml"
+
+# Default EFI search directories for ZFSBootMenu detection
+readonly ZBM_DEFAULT_EFI_SEARCH_DIRS=(
+    "/boot/efi/EFI"
+    "/boot/efi2/EFI"
+)
+
+# Set ZBM_EFI_SEARCH_DIRS if not already configured
+if [[ -z "${ZBM_EFI_SEARCH_DIRS:-}" ]]; then
+    ZBM_EFI_SEARCH_DIRS=("${ZBM_DEFAULT_EFI_SEARCH_DIRS[@]}")
+fi
+
+# ZFSBootMenu GitHub API
+readonly ZBM_GITHUB_LATEST_URL="https://api.github.com/repos/zbm-dev/zfsbootmenu/releases/latest"
+readonly ZBM_VERSION_CHECK_TIMEOUT=30
